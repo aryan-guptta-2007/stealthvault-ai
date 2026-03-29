@@ -12,7 +12,7 @@ from app.config import settings
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.database import get_db
-from app.models.db_models import DBUser, DBTenant
+from app.models.db_models import DBUser, DBTenant, DBWaitlist
 from app.core.limiter import limiter
 from fastapi import Request
 from app.core.audit import log_audit
@@ -200,4 +200,42 @@ async def register_tenant(
         "tenant_id": new_tenant.id,
         "api_key": new_tenant.api_key,
         "plan": new_tenant.plan
+    }
+
+
+@router.post("/beta/waitlist", status_code=status.HTTP_201_CREATED)
+@limiter.limit("3/minute")
+async def join_waitlist(
+    request: Request,
+    email: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    🚀 THE STARTUP SEED: Capture early user interest.
+    Enables zero-cost user validation before the full SaaS launch.
+    """
+    # 1. 🛡️ Verification
+    check = await db.execute(select(DBWaitlist).where(DBWaitlist.email == email))
+    if check.scalars().first():
+        return {"message": "Welcome back! You're already on our priority list."}
+
+    # 2. 🧱 Persistence
+    new_entry = DBWaitlist(email=email)
+    db.add(new_entry)
+    
+    # 3. 📜 Audit
+    from app.core.audit import log_audit
+    await log_audit(
+        action="WAITLIST_JOIN",
+        target=email,
+        tenant_id="global",
+        result="SUCCESS",
+        message="New potential beta user onboarded."
+    )
+    
+    await db.commit()
+    
+    return {
+        "message": "Launch code received. You're now on the priority list!",
+        "status": "confirmed"
     }

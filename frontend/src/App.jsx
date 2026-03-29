@@ -42,6 +42,46 @@ export function AuthProvider({ children }) {
 
 const useAuth = () => useContext(AuthContext)
 
+// ═══ FEEDBACK COMPONENT ═══
+function FloatingFeedback() {
+  const [open, setOpen] = useState(false)
+  const [msg, setMsg] = useState('')
+  const [sent, setSent] = useState(false)
+
+  const send = () => {
+    // 🚀 Startup logic: Send to a simulated webhook or DB
+    setSent(true)
+    setTimeout(() => { setOpen(false); setSent(false); setMsg('') }, 2000)
+  }
+
+  return (
+    <div className="feedback-container">
+      {!open ? (
+        <button className="feedback-trigger" onClick={() => setOpen(true)}>💬 Feedback</button>
+      ) : (
+        <div className="feedback-popover">
+          <div className="feedback-title">Help us improve StealthVault</div>
+          {sent ? (
+            <div className="feedback-success">✨ Thank you for the validation!</div>
+          ) : (
+            <>
+              <textarea 
+                value={msg} 
+                onChange={e => setMsg(e.target.value)} 
+                placeholder="What's missing? What's broken?"
+              />
+              <div className="feedback-popover-btns">
+                <button onClick={send} disabled={!msg}>SEND</button>
+                <button className="close" onClick={() => setOpen(false)}>CLOSE</button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ═══ UTILITY ═══
 function timeAgo(timestamp) {
   const seconds = Math.floor((Date.now() - new Date(timestamp).getTime()) / 1000)
@@ -663,6 +703,60 @@ function LoginPage() {
           </button>
         </form>
         <div className="auth-footer">New sector? <Link to="/register" className="auth-link">Provision Tenant</Link></div>
+        <div className="auth-footer" style={{ marginTop: '10px' }}>
+          <Link to="/join-beta" className="auth-link" style={{ color: 'var(--blue)' }}>Join the Beta Waitlist</Link>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function LandingPage() {
+  const [email, setEmail] = useState('')
+  const [joined, setJoined] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  const join = async (e) => {
+    e.preventDefault()
+    setLoading(true)
+    try {
+      const res = await fetch(`${API_BASE}/auth/beta/waitlist?email=${encodeURIComponent(email)}`, { method: 'POST' })
+      if (res.ok) setJoined(true)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="landing-wrapper">
+      <div className="landing-hero">
+        <div className="landing-logo">SV</div>
+        <h1>StealthVault AI</h1>
+        <h2>The World's First Autonomous AI SOC</h2>
+        <p>0 to 1 is complete. We are now scaling from 1 to 100.</p>
+        
+        {joined ? (
+          <div className="join-success">🚀 You're on the priority list. Watch your inbox.</div>
+        ) : (
+          <form className="join-form" onSubmit={join}>
+            <input 
+              type="email" 
+              placeholder="Enter your work email" 
+              value={email} 
+              onChange={e => setEmail(e.target.value)} 
+              required 
+            />
+            <button type="submit" disabled={loading}>
+              {loading ? 'INITIALIZING...' : 'JOIN THE BETA'}
+            </button>
+          </form>
+        )}
+        
+        <div className="landing-links">
+          <Link to="/login">Login to Dashboard</Link>
+          <span className="sep">|</span>
+          <Link to="/register">Provision Enterprise Tenant</Link>
+        </div>
       </div>
     </div>
   )
@@ -682,13 +776,14 @@ function RegisterPage() {
     setLoading(true)
 
     try {
-      const res = await fetch(`${API_BASE}/saas/register`, {
+      const res = await fetch(`${API_BASE}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tenant_name: tenantName,
-          admin_username: adminUser,
-          admin_password: password
+          username: adminUser,
+          password: password,
+          plan: 'FREE'
         })
       })
 
@@ -905,15 +1000,26 @@ export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route path="/" element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          } />
-        </Routes>
+        <div style={{ position: 'relative', minHeight: '100vh' }}>
+          <Routes>
+             {/* 🚀 PUBLIC STARTUP ROUTES */}
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/join-beta" element={<LandingPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            
+            {/* 🛡️ PROTECTED SOC DASHBOARD */}
+            <Route path="/dashboard" element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            } />
+            
+            {/* Catch-all for authenticated users */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+          <FloatingFeedback />
+        </div>
       </BrowserRouter>
     </AuthProvider>
   )

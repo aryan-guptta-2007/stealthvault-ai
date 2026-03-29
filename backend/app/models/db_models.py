@@ -258,3 +258,13 @@ class DBAuditLog(Base):
     # Context
     metadata_json = Column(JSON, nullable=True) # Original request ID, Source IP, Browser, etc.
     message = Column(String(500))
+
+
+class DBWaitlist(Base):
+    """🚀 THE STARTUP SEED: Capture early user interest."""
+    __tablename__ = "beta_waitlist"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    registered_at = Column(DateTime, default=datetime.utcnow)
+    is_invited = Column(Boolean, default=False)
