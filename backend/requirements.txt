@@ -31,6 +31,6 @@ SQLAlchemy==2.0.31
 asyncpg==0.29.0
 cryptography==42.0.5
 PyJWT==2.8.0
-psychopy2-binary==2.9.9
+psycopg2-binary
 slowapi==0.1.9
 passlib[bcrypt]==1.7.4

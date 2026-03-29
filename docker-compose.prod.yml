@@ -24,10 +24,10 @@ services:
       dockerfile: Dockerfile
     container_name: stealthvault_backend_prod
     environment:
-      - DATABASE_URL=postgresql+asyncpg://stealthadmin:$${POSTGRES_PASSWORD:-stealthpassword}@postgres:5432/stealthvault
+      - DATABASE_URL=postgresql+asyncpg://stealthadmin:${POSTGRES_PASSWORD:-stealthpassword}@postgres:5432/stealthvault
       - REDIS_URL=redis://redis:6379/0
       - STEALTH_SIMULATION_MODE=false
-      - SECRET_KEY=$${SECRET_KEY:-SUPER_SECRET_CHANGE_ME}
+      - SECRET_KEY=${SECRET_KEY:-SUPER_SECRET_CHANGE_ME}
     deploy:
       resources:
         limits:
@@ -66,7 +66,7 @@ services:
     container_name: stealthvault_db_prod
     environment:
       POSTGRES_USER: stealthadmin
-      POSTGRES_PASSWORD: $${POSTGRES_PASSWORD:-stealthpassword}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stealthpassword}
       POSTGRES_DB: stealthvault
     deploy:
       resources:
