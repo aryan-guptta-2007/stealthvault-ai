@@ -50,8 +50,35 @@ from app.api.soc import router as soc_router
 from app.api.system import router as system_router
 from app.api.defender import router as defender_router
 from app.api.saas import router as saas_router
+
 from app.api.system import get_system_metrics
 import asyncio
+
+# --- 🚀 FASTAPI CORE INITIALIZATION ---
+app = FastAPI(
+    title="StealthVault AI",
+    description=(
+        "🛡️ AI-Powered Autonomous Cyber Defense System\n\n"
+        "Self-learning security brain that monitors network traffic, "
+        "detects attacks (including zero-days), explains threats, "
+        "and suggests defenses.\n\n"
+        "**Capabilities:**\n"
+        "- 🔍 Real-time packet capture (Scapy)\n"
+        "- 🧠 Anomaly Detection (Isolation Forest)\n"
+        "- 🎯 Attack Classification (Random Forest)\n"
+        "- ⚡ Risk Scoring Engine\n"
+        "- 💬 AI Security Brain\n"
+        "- 🔄 Continuous Learning\n"
+        "- 📊 Real-time Dashboard\n"
+    ),
+    version=settings.APP_VERSION,
+    lifespan=lifespan,
+)
+
+# 🔒 Register Foundation Security (Limiter + CSRF/WAF)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 async def data_retention_daemon():
     """
@@ -470,40 +497,10 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-# Create app
-app = FastAPI(
-    title="StealthVault AI",
-    description=(
-        "🛡️ AI-Powered Autonomous Cyber Defense System\n\n"
-        "Self-learning security brain that monitors network traffic, "
-        "detects attacks (including zero-days), explains threats, "
-        "and suggests defenses.\n\n"
-        "**Capabilities:**\n"
-        "- 🔍 Real-time packet capture (Scapy)\n"
-        "- 🧠 Anomaly Detection (Isolation Forest)\n"
-        "- 🎯 Attack Classification (Random Forest)\n"
-        "- ⚡ Risk Scoring Engine\n"
-        "- 💬 AI Security Brain\n"
-        "- 🔄 Continuous Learning\n"
-        "- 📊 Real-time Dashboard\n"
-    ),
-    version=settings.APP_VERSION,
-    lifespan=lifespan,
-)
 
-# Register Limiter
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-# Add Security Shield Middleware
+# --- 🛡️ PRODUCTION SECURITY STACK & MIDDLEWARE ---
 app.middleware("http")(security_hardening_middleware)
-
-# CORS (allow dashboard frontend)
-# 🛡️ PRODUCTION SECURITY STACK
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-app.add_middleware(SlowAPIMiddleware) # Global Rate Limiting
-app.add_middleware(RequestSizeLimitMiddleware) # Global Size Capping
+app.add_middleware(RequestSizeLimitMiddleware) 
 
 app.add_middleware(
     CORSMiddleware,
