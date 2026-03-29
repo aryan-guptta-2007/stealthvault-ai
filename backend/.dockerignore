@@ -1,0 +1,16 @@
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.env
+venv
+.venv
+node_modules
+data
+datasets
+models
+*.pkl
+*.pt
+*.h5
+*.csv
+logs
