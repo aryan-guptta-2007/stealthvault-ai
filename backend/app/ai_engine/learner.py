@@ -22,7 +22,7 @@ from typing import Optional
 from app.config import settings
 from app.ai_engine.anomaly import anomaly_detector
 from app.ai_engine.classifier import attack_classifier
-from app.models.alert import AttackType
+from app.models.alert import AttackType, ClassificationResult
 from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 from app.database import AsyncSessionLocal
 
