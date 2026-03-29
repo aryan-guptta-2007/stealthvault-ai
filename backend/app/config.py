@@ -1,0 +1,65 @@
+"""
+StealthVault AI - Configuration
+Centralized settings for the entire system.
+"""
+
+import os
+from pydantic_settings import BaseSettings
+from typing import Optional
+
+
+class Settings(BaseSettings):
+    """Application settings loaded from environment variables."""
+
+    # Application
+    APP_NAME: str = "StealthVault AI"
+    APP_VERSION: str = "1.0.0"
+    DEBUG: bool = True
+    HOST: str = "0.0.0.0"
+    PORT: int = 8000
+
+    # Persistence & Messaging
+    DATABASE_URL: str = "postgresql+asyncpg://stealthadmin:stealthpassword@localhost:5432/stealthvault"
+    REDIS_URL: str = "redis://localhost:6379/0"
+
+    # CORS
+    CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+
+    # AI Engine
+    ANOMALY_CONTAMINATION: float = 0.1  # Expected fraction of anomalies
+    ANOMALY_THRESHOLD: float = 0.7
+    CLASSIFIER_CONFIDENCE_THRESHOLD: float = 0.6
+    RISK_CRITICAL_THRESHOLD: float = 0.85
+    RISK_HIGH_THRESHOLD: float = 0.65
+    RISK_MEDIUM_THRESHOLD: float = 0.4
+
+    # Paths
+    BASE_DIR: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    DATA_DIR: str = ""
+    MODELS_DIR: str = ""
+
+    # Alert Storage
+    MAX_ALERTS: int = 1000
+    MAX_TRAFFIC_HISTORY: int = 5000
+
+    # WebSocket
+    WS_BROADCAST_INTERVAL: float = 1.0
+
+    class Config:
+        env_file = ".env"
+        env_prefix = "SV_"
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        if not self.DATA_DIR:
+            self.DATA_DIR = os.path.join(self.BASE_DIR, "data")
+        if not self.MODELS_DIR:
+            self.MODELS_DIR = os.path.join(self.BASE_DIR, "data", "models")
+
+        # Ensure directories exist
+        os.makedirs(self.DATA_DIR, exist_ok=True)
+        os.makedirs(self.MODELS_DIR, exist_ok=True)
+        os.makedirs(os.path.join(self.DATA_DIR, "datasets"), exist_ok=True)
+
+
+settings = Settings()

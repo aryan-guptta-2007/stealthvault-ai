@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  # 🧠 The SOC Engine (FastAPI + AI Workers)
+  backend:
+    build: ./backend
+    container_name: stealthvault_backend
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://stealthadmin:stealthpassword@postgres:5432/stealthvault
+      - REDIS_URL=redis://redis:6379/0
+      - PORT=8000
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend_data:/app/data
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 🖥️ The Dashboard (React + Nginx)
+  frontend:
+    build: ./frontend
+    container_name: stealthvault_frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: always
+
+  # ⚡ The Neural Bus (Redis)
+  redis:
+    image: redis:alpine
+    container_name: stealthvault_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: always
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 🗃️ The Audit Ledger (PostgreSQL)
+  postgres:
+    image: postgres:15-alpine
+    container_name: stealthvault_db
+    environment:
+      POSTGRES_USER: stealthadmin
+      POSTGRES_PASSWORD: stealthpassword
+      POSTGRES_DB: stealthvault
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stealthadmin -d stealthvault"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  backend_data:
+  redis_data:
+  postgres_data:

@@ -1,0 +1,35 @@
+# StealthVault AI - Backend Dependencies
+
+# Web Framework
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+python-multipart==0.0.9
+websockets==12.0
+
+# AI / ML
+scikit-learn==1.5.1
+numpy==1.26.4
+pandas==2.2.2
+torch==2.3.1
+joblib==1.4.2
+
+# Data & Config
+pydantic==2.8.0
+pydantic-settings==2.4.0
+python-dotenv==1.0.1
+aiofiles==24.1.0
+
+# Testing
+pytest==8.3.2
+httpx==0.27.0
+pytest-asyncio==0.23.8
+
+# Persistence & Drivers
+redis==5.0.1
+SQLAlchemy==2.0.31
+asyncpg==0.29.0
+cryptography==42.0.5
+PyJWT==2.8.0
+psychopy2-binary==2.9.9
+slowapi==0.1.9
+passlib[bcrypt]==1.7.4
