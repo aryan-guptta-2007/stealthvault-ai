@@ -13,6 +13,7 @@ decision unit that produces a unified, distributed threat assessment.
 """
 
 import time
+import numpy as np
 import asyncio
 import redis.asyncio as redis
 from datetime import datetime
