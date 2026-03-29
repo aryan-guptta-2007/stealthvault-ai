@@ -51,8 +51,112 @@ from app.api.system import router as system_router
 from app.api.defender import router as defender_router
 from app.api.saas import router as saas_router
 
+
 from app.api.system import get_system_metrics
 import asyncio
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application startup and shutdown events."""
+    print()
+    print("╔═══════════════════════════════════════════════════════╗")
+    print("║         STEALTHVAULT AI — INITIALIZING...             ║")
+    print("╚═══════════════════════════════════════════════════════╝")
+    print()
+
+    # Initialize System Observability
+    setup_logging()
+    set_db_logger(log_event)
+
+    # Start Database Batchers (High-Throughput Persistence)
+    inspection_batcher.start()
+    system_event_batcher.start()
+
+    # Initialize PostgreSQL Storage
+    try:
+        # Use the hardened init_db with retry logic
+        await init_db(retries=10)
+        logger.info("PostgreSQL Database — CONNECTED")
+    except Exception as e:
+        logger.critical(f"FATAL: Database connection failed after multiple retries. ({e})")
+        # In a real enterprise app, we might exit(1) here if DB is strictly required
+        
+    # Start horizontal WebSocket listener
+    try:
+        await ws_manager.start()
+        logger.info("Distributed WebSocket Stream — OK")
+    except Exception as e:
+        logger.error(f"WebSocket Manager Error: {e}")
+
+    # Start the stream processor
+    try:
+        await stream_processor.start()
+        logger.info("Stream Processor — ACTIVE")
+    except Exception as e:
+        logger.critical(f"Stream Processor Error: {e}")
+    
+    # Start Real-time Metrics Broadcast
+    asyncio.create_task(broadcast_system_metrics())
+    print("  📊 Observability Telemetry Started")
+    
+    # Start persistence cleanup daemon
+    asyncio.create_task(data_retention_daemon())
+    
+    # Start Autonomous Learning Pipeline
+    asyncio.create_task(scheduled_retrain_daemon())
+    
+    # Start Production Metrics Pipeline
+    asyncio.create_task(system_metrics_daemon())
+    
+    # Start Defender auto-unblock daemon
+    asyncio.create_task(defender_cleanup_daemon())
+    print("  🕰️ Defender Safety Daemon Started")
+
+    # Load AI models
+    anomaly_loaded = anomaly_detector.load()
+    classifier_loaded = attack_classifier.load()
+
+    if anomaly_loaded:
+        print("  ✅ Anomaly Detection Model — LOADED")
+    else:
+        print("  ⚠️  Anomaly Detection Model — NOT TRAINED")
+        print("     Run: python scripts/generate_demo_data.py")
+
+    if classifier_loaded:
+        print("  ✅ Attack Classifier Model — LOADED")
+    else:
+        print("  ⚠️  Attack Classifier Model — NOT TRAINED")
+        print("     Run: python scripts/generate_demo_data.py")
+
+    print(f"  🔄 Continuous Learning — v{continuous_learner.model_version}")
+    print()
+    print("  🤖 MULTI-AGENT SOC TEAM:")
+    print("     Agent 1: DETECTOR  (Eyes)  — Active")
+    print("     Agent 2: ANALYST   (Brain) — Active")
+    # For global startup logs, show the default tenant status
+    default_shadow = defender_agent.get_shadow_mode("default")
+    print(f"     Agent 3: DEFENDER  (Fist)  — {'SHADOW MODE ⚠️' if default_shadow else 'ARMED 🛡️'}")
+    print()
+    print("  👥 SAAS LAYER:        Multi-Tenant Enabled")
+    print(f"  🌐 Server:    http://localhost:{settings.PORT}")
+    print(f"  📖 API Docs:  http://localhost:{settings.PORT}/docs")
+    print(f"  🖥️  Dashboard: http://localhost:{settings.PORT}/")
+    print(f"  🔌 WebSocket: ws://localhost:{settings.PORT}/ws")
+    print(f"  🤖 SOC API:   http://localhost:{settings.PORT}/api/v1/soc/status")
+    print()
+    print("  🛡️  StealthVault AI is ACTIVE")
+    print()
+
+    yield
+
+    # Shutdown
+    await stream_processor.stop()
+    
+    # Graceful Database Flush
+    await inspection_batcher.stop()
+    await system_event_batcher.stop()
+    
+    print("\n  🛡️  StealthVault AI — SHUTTING DOWN\n")
 
 # --- 🚀 FASTAPI CORE INITIALIZATION ---
 app = FastAPI(
@@ -372,108 +476,8 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application startup and shutdown events."""
-    print()
-    print("╔═══════════════════════════════════════════════════════╗")
-    print("║         STEALTHVAULT AI — INITIALIZING...             ║")
-    print("╚═══════════════════════════════════════════════════════╝")
-    print()
 
-    # Initialize System Observability
-    setup_logging()
-    set_db_logger(log_event)
-
-    # Start Database Batchers (High-Throughput Persistence)
-    inspection_batcher.start()
-    system_event_batcher.start()
-
-    # Initialize PostgreSQL Storage
-    try:
-        # Use the hardened init_db with retry logic
-        await init_db(retries=10)
-        logger.info("PostgreSQL Database — CONNECTED")
-    except Exception as e:
-        logger.critical(f"FATAL: Database connection failed after multiple retries. ({e})")
-        # In a real enterprise app, we might exit(1) here if DB is strictly required
-        
-    # Start horizontal WebSocket listener
-    try:
-        await ws_manager.start()
-        logger.info("Distributed WebSocket Stream — OK")
-    except Exception as e:
-        logger.error(f"WebSocket Manager Error: {e}")
-
-    # Start the stream processor
-    try:
-        await stream_processor.start()
-        logger.info("Stream Processor — ACTIVE")
-    except Exception as e:
-        logger.critical(f"Stream Processor Error: {e}")
-    
-    # Start Real-time Metrics Broadcast
-    asyncio.create_task(broadcast_system_metrics())
-    print("  📊 Observability Telemetry Started")
-    
-    # Start persistence cleanup daemon
-    asyncio.create_task(data_retention_daemon())
-    
-    # Start Autonomous Learning Pipeline
-    asyncio.create_task(scheduled_retrain_daemon())
-    
-    # Start Production Metrics Pipeline
-    asyncio.create_task(system_metrics_daemon())
-    
-    # Start Defender auto-unblock daemon
-    asyncio.create_task(defender_cleanup_daemon())
-    print("  🕰️ Defender Safety Daemon Started")
-
-    # Load AI models
-    anomaly_loaded = anomaly_detector.load()
-    classifier_loaded = attack_classifier.load()
-
-    if anomaly_loaded:
-        print("  ✅ Anomaly Detection Model — LOADED")
-    else:
-        print("  ⚠️  Anomaly Detection Model — NOT TRAINED")
-        print("     Run: python scripts/generate_demo_data.py")
-
-    if classifier_loaded:
-        print("  ✅ Attack Classifier Model — LOADED")
-    else:
-        print("  ⚠️  Attack Classifier Model — NOT TRAINED")
-        print("     Run: python scripts/generate_demo_data.py")
-
-    print(f"  🔄 Continuous Learning — v{continuous_learner.model_version}")
-    print()
-    print("  🤖 MULTI-AGENT SOC TEAM:")
-    print("     Agent 1: DETECTOR  (Eyes)  — Active")
-    print("     Agent 2: ANALYST   (Brain) — Active")
-    # For global startup logs, show the default tenant status
-    default_shadow = defender_agent.get_shadow_mode("default")
-    print(f"     Agent 3: DEFENDER  (Fist)  — {'SHADOW MODE ⚠️' if default_shadow else 'ARMED 🛡️'}")
-    print()
-    print("  👥 SAAS LAYER:        Multi-Tenant Enabled")
-    print(f"  🌐 Server:    http://localhost:{settings.PORT}")
-    print(f"  📖 API Docs:  http://localhost:{settings.PORT}/docs")
-    print(f"  🖥️  Dashboard: http://localhost:{settings.PORT}/")
-    print(f"  🔌 WebSocket: ws://localhost:{settings.PORT}/ws")
-    print(f"  🤖 SOC API:   http://localhost:{settings.PORT}/api/v1/soc/status")
-    print()
-    print("  🛡️  StealthVault AI is ACTIVE")
-    print()
-
-    yield
-
-    # Shutdown
-    await stream_processor.stop()
-    
-    # Graceful Database Flush
-    await inspection_batcher.stop()
-    await system_event_batcher.stop()
-    
-    print("\n  🛡️  StealthVault AI — SHUTTING DOWN\n")
+# --- 🛡️ PRODUCTION SECURITY STACK & MIDDLEWARE ---
 
 
 class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
