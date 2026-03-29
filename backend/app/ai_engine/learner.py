@@ -12,8 +12,11 @@ import numpy as np
 import os
 import json
 import time
+import json
+import asyncio
 from datetime import datetime
 from collections import deque
+from app.core.logger import logger
 from typing import Optional
 
 from app.config import settings
@@ -61,6 +64,12 @@ class ContinuousLearner:
         # Paths
         self._feedback_dir = os.path.join(settings.DATA_DIR, "feedback")
         os.makedirs(self._feedback_dir, exist_ok=True)
+        
+        # Drift Monitoring (Rolling Window)
+        self.confidence_window = deque(maxlen=2000)
+        self.unknown_count = 0
+        self.anomaly_count = 0
+        self.is_drift_detected = False
 
     def validate_feedback(
         self,
@@ -179,21 +188,64 @@ class ContinuousLearner:
         }
 
         if should_retrain:
-            retrain_result = self.retrain()
+            # Run retrain in a separate thread if possible, or just wait in async
+            # For now, keeping it simple as a direct call which is CPU heavy.
+            retrain_result = self.retrain(reason="Threshold Reached")
             result["retrain_triggered"] = True
             result["retrain_result"] = retrain_result
             result["model_version"] = self.model_version
 
         return result
 
-    def retrain(self) -> dict:
+    def auto_label_sample(self, features: np.ndarray, prediction: ClassificationResult):
+        """
+        🚀 AUTONOMOUS SELF-IMPROVEMENT LOOP
+        Automatically ingest extremely high-confidence predictions to reinforce the model 
+        without human intervention.
+        """
+        if prediction.confidence >= 0.98:
+            # We treat this as a ground truth sample for reinforcement
+            self.labeled_features.append(features.flatten())
+            self.labeled_labels.append(prediction.attack_type.value)
+            
+            # Check if it was normal
+            if prediction.attack_type.value == "Normal":
+                self.normal_buffer.append(features.flatten())
+            
+            # Note: We don't trigger auto-retrain here immediately to avoid rapid cycles.
+            # It will be picked up by the 24h cycle or the next threshold.
+
+    def monitor_drift(self, confidence: float, is_unknown: bool, is_anomaly: bool):
+        """
+        📉 AUTONOMOUS DRIFT DETECTION
+        Tracks model performance metrics in real-time.
+        """
+        self.confidence_window.append(confidence)
+        if is_unknown:
+            self.unknown_count += 1
+        if is_anomaly:
+            self.anomaly_count += 1
+            
+        # Detect Drift: If average confidence in the last 2000 samples drops < 70%
+        # OR if UNKNOWN rate spikes over 20%
+        if len(self.confidence_window) >= 1000:
+            avg_conf = np.mean(self.confidence_window)
+            if avg_conf < 0.70:
+                if not self.is_drift_detected:
+                    logger.warning(f"📉 CONCEPT DRIFT DETECTED: Average confidence dropped to {avg_conf:.2f}. Retraining suggested.")
+                    self.is_drift_detected = True
+            else:
+                self.is_drift_detected = False
+
+    def retrain(self, reason: str = "Automated") -> dict:
         """
         Retrain models with accumulated feedback data.
+        Reason can be: "Threshold Reached", "Scheduled", "Drift Detected", or "Manual".
         
         Combines the original training data with new feedback samples.
         """
-        print(f"\n🔄 CONTINUOUS LEARNING — Retraining models...")
-        print(f"   New samples: {len(self.labeled_features)}")
+        logger.info(f"🔄 CONTINUOUS LEARNING — Retraining models (Reason: {reason})")
+        logger.info(f"   New samples accumulated: {len(self.labeled_features)}")
         start_time = time.time()
 
         results = {}

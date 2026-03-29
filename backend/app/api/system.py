@@ -5,6 +5,10 @@ Exposes real-time internal telemetry, ML confidence trends, queue pressure, and 
 
 import time
 import asyncio
+try:
+    import psutil
+except ImportError:
+    psutil = None
 from fastapi import APIRouter
 from app.collector.stream import stream_processor
 from app.agents.orchestrator import soc_orchestrator
@@ -12,6 +16,9 @@ from app.models.db_models import DBSystemEvent
 from sqlalchemy import select, desc
 from app.api.rbac import RoleChecker
 from fastapi import Depends
+from app.core.compliance import compliance_engine
+from app.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # RBAC Instances
 soc_access = Depends(RoleChecker(["admin", "soc_analyst"]))
@@ -112,6 +119,17 @@ async def get_system_metrics(user: dict = soc_access):
             "total_processed": orch.total_processed,
             "total_dropped_by_backpressure": stream_stats.get("total_dropped", 0),
         },
+        "host": {
+            "cpu_percent": psutil.cpu_percent() if psutil else 0,
+            "ram_percent": psutil.virtual_memory().percent if psutil else 0,
+            "disk_percent": psutil.disk_usage('/').percent if psutil else 0,
+        },
+        "worker_registry": [
+            {
+                "id": k.split(":")[-1],
+                "status": "online",
+            } for k in (await stream_processor.redis.keys("worker:heartbeat:*"))
+        ] if stream_processor.redis else [],
         "timestamp": time.time()
     }
 
@@ -120,8 +138,11 @@ async def get_system_events(user: dict = soc_access, limit: int = 50):
     """
     🩺 God View: Retrieve recent internal system events and errors.
     """
+    tenant_id = user.get("tenant_id", "default")
+    from app.database import AsyncSessionLocal
+    
     async with AsyncSessionLocal() as db:
-        stmt = select(DBSystemEvent).order_by(desc(DBSystemEvent.timestamp)).limit(limit)
+        stmt = select(DBSystemEvent).where(DBSystemEvent.tenant_id == tenant_id).order_by(desc(DBSystemEvent.timestamp)).limit(limit)
         result = await db.execute(stmt)
         events = result.scalars().all()
         
@@ -135,3 +156,26 @@ async def get_system_events(user: dict = soc_access, limit: int = 50):
                 "metadata": e.metadata_json
             } for e in events
         ]
+
+
+@router.get("/compliance/export")
+async def export_tenant_compliance_data(
+    current_user: dict = Depends(RoleChecker(["admin", "billing_admin"])),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    🚀 GDPR COMPLIANCE EXPORT (Article 20)
+    Official data portability engine for SaaS tenants.
+    """
+    tenant_id = current_user.get("tenant_id", "default")
+    # 🔍 AUDIT: Export Action
+    from app.core.audit import log_audit
+    await log_audit(
+        action="DATA_EXPORT",
+        target=tenant_id,
+        tenant_id=tenant_id,
+        result="SUCCESS",
+        message="Full forensic data export initiated."
+    )
+    
+    return await compliance_engine.export_tenant_data(tenant_id, db)

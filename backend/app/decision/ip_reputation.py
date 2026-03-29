@@ -26,6 +26,10 @@ class IPProfile(TypedDict):
     behavioral_tags: List[str] # "Scanner", "Aggressive", etc.
     dwell_time_seconds: float # Time between first and last seen
     block_count: int # Number of times this IP has been blocked
+    
+    # 🛡️ NEW: Trust & Legitimacy
+    trust_score: float # 0.0 to 1.0 (trusted)
+    normal_count: int # Total non-malicious packets
 
 
 
@@ -56,6 +60,8 @@ class IPReputationEngine:
             "behavioral_tags": [],
             "dwell_time_seconds": 0.0,
             "block_count": 0,
+            "trust_score": 0.5, # Start neutral
+            "normal_count": 0,
         }
 
     async def get_profile(self, ip: str, tenant_id: str = "default") -> IPProfile:
@@ -105,6 +111,9 @@ class IPReputationEngine:
         first_seen = datetime.fromisoformat(profile["first_seen"])
         profile["dwell_time_seconds"] = (now - first_seen).total_seconds()
             
+        # 6. Trust Decay
+        profile["trust_score"] = max(0.0, profile["trust_score"] - 0.2)
+            
         key = self._get_key(ip, tenant_id)
         await self.redis.setex(
             key,
@@ -112,11 +121,25 @@ class IPReputationEngine:
             json.dumps(profile)
         )
 
-    async def increment_block_count(self, ip: str, tenant_id: str = "default"):
-        """Increments the persistent block counter for an IP (Safety Ladder)."""
+        key = self._get_key(ip, tenant_id)
+        await self.redis.setex(key, self.TTL_SECONDS, json.dumps(profile))
+
+    async def record_normal_traffic(self, ip: str, tenant_id: str = "default"):
+        """Increments 'Normal' event count and slowly builds trust."""
         profile = await self.get_profile(ip, tenant_id)
-        profile["block_count"] += 1
+        profile["normal_count"] += 1
         
+        # 🛡️ TRUST BUILDING LOGIC
+        # Every 100 normal packets increases trust by 0.01
+        if profile["normal_count"] % 100 == 0:
+            profile["trust_score"] = min(1.0, profile["trust_score"] + 0.01)
+            
+        # Long-term Dwell Reward: if first seen > 7 days ago and active, boost trust
+        first_seen = datetime.fromisoformat(profile["first_seen"])
+        dwell_days = (datetime.utcnow() - first_seen).days
+        if dwell_days > 7 and profile["trust_score"] < 0.9:
+            profile["trust_score"] = min(0.9, profile["trust_score"] + 0.05)
+            
         key = self._get_key(ip, tenant_id)
         await self.redis.setex(key, self.TTL_SECONDS, json.dumps(profile))
 

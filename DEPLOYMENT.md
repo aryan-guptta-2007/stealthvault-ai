@@ -16,40 +16,42 @@ This guide documents the path from local development to a globally-exposed, prod
 
 ## 🚀 The 5-Step Deployment Pipeline
 
-### 1. Automated Provisioning
-The fastest way to deploy is using the provided `deploy_vps.sh` script.
+### 1. Automated VPS Provisioning (The Fast Path)
+The fastest way to deploy is using the upgraded `deploy_vps.sh` script, which now handles automated secret generation and firewall hardening.
 
 ```bash
-# On your remote VPS ssh
-git clone https://github.com/YOUR_USER/stealthvault-ai.git
+# On your remote host
+git clone https://github.com/aryan-guptta-2007/stealthvault-ai.git
 cd stealthvault-ai
 chmod +x deploy_vps.sh
 ./deploy_vps.sh
 ```
 
-### 2. Manual SSL Termination (Recommended)
-While the `docker-compose` stack exposes port 80/443, using **Nginx + Certbot** on the host is the safest approach.
+### 2. Infrastructure as Code (The Enterprise Path)
+For professional multi-cloud deployments, use the provided **Terraform** modules in `deploy/terraform/`.
 
-```nginx
-# /etc/nginx/sites-available/stealthvault
-server {
-    server_name yourdomain.com;
+```bash
+cd deploy/terraform
+terraform init
+terraform plan
+terraform apply
+```
+This will provision a hardened **AWS EC2** instance, VPC, and Security Groups tailored for the SOC.
 
-    location / {
-        proxy_pass http://localhost:5173; # Frontend
-    }
+### 3. CI/CD Pipeline (Automated Delivery)
+StealthVault AI includes a pre-configured **GitHub Actions** workflow in `.github/workflows/main.yml`:
+- **CI**: Runs linting and build checks on every Pull Request.
+- **CD**: Automatically builds and pushes production Docker images to the **GitHub Container Registry (GHCR)** on every push to `main`.
 
-    location /api {
-        proxy_pass http://localhost:8000; # Backend
-    }
+### 4. Hardened Orchestration (Docker Compose Prod)
+Production deployments use `docker-compose.prod.yml`, which includes:
+- **Nginx Reverse Proxy**: Entrypoint for all traffic.
+- **SSL Termination**: Automated via Let's Encrypt (Certbot).
+- **Resource Isolation**: CPU and RAM limits for AI workers to prevent system DoS.
 
-    location /ws {
-        proxy_pass http://localhost:8000; # WebSockets
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "Upgrade";
-    }
-}
+To launch manually:
+```bash
+docker compose -f docker-compose.prod.yml up -d
 ```
 
 ### 3. Database Persistence & Backups

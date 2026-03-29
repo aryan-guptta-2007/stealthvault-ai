@@ -24,6 +24,8 @@ from app.agents.story import story_engine
 from app.websocket.feed import ws_manager
 from app.database import persist_soc_results, log_event
 from app.decision.ip_reputation import ip_reputation_engine
+from app.core.product import QuotaGuard
+from app.core.compliance import compliance_engine
 
 
 @dataclass
@@ -51,6 +53,8 @@ class SOCVerdict:
                 "severity": self.detection.risk.severity.value,
                 "signal_count": self.detection.signal_count,
                 "confidence": self.detection.combined_confidence,
+                "explanation": self.detection.classification.explanation,
+                "feature_contributions": self.detection.classification.feature_contributions,
             },
             "processing_time_ms": self.processing_time_ms,
         }
@@ -109,6 +113,7 @@ class SOCOrchestrator:
         self.avg_analyst_ms: float = 0.0
         self.avg_confidence_score: float = 0.0
         self.total_unknowns: int = 0
+        self.total_quota_rejections: int = 0
     
     async def process(self, packet: NetworkPacket) -> SOCVerdict:
         """
@@ -122,6 +127,19 @@ class SOCOrchestrator:
         """
         start = time.perf_counter()
         self.total_processed += 1
+        
+        # ═══ 💰 SAAS QUOTA ENFORCEMENT ═══
+        from app.database import SessionLocal
+        async with SessionLocal() as db:
+            allowed, reason = await QuotaGuard.check_quota(packet.tenant_id, db)
+            if not allowed:
+                self.total_quota_rejections += 1
+                log_event("WARNING", "QuotaGuard", f"Rejection for {packet.src_ip}: {reason}", tenant_id=packet.tenant_id)
+                return None # Drop packet (SaaS tier limit reached)
+            
+            # Increment Usage
+            await QuotaGuard.increment_usage(packet.tenant_id, db)
+            await db.commit()
         
         # ═══ AGENT 1: DETECTOR ═══
         d_start = time.perf_counter()
@@ -302,6 +320,7 @@ class SOCOrchestrator:
                 "avg_confidence_score": round(self.avg_confidence_score, 4),
                 "total_unknowns": self.total_unknowns,
                 "unknown_percentage": round(self.total_unknowns / max(self.total_processed, 1), 4),
+                "total_quota_rejections": self.total_quota_rejections,
             },
             "agents": {
                 "detector": detector_agent.get_stats(),

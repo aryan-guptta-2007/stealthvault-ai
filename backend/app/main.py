@@ -21,13 +21,20 @@ from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
 from app.core.limiter import limiter
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
+from app.core.logger import setup_logging, set_db_logger, logger
 from app.ai_engine.anomaly import anomaly_detector
 from app.ai_engine.classifier import attack_classifier
 from app.ai_engine.learner import continuous_learner
 from app.collector.stream import stream_processor
 from app.websocket.feed import ws_manager
-from app.database import init_db
-from app.models import db_models # Pre-load models for SQLAlchemy Base
+from app.database import init_db, log_event
+from app.models import db_models 
+from app.core.batch_sqla import inspection_batcher, system_event_batcher
 
 # Import agents
 from app.agents.defender import defender_agent
@@ -92,7 +99,7 @@ async def defender_cleanup_daemon():
         try:
             defender_agent.process_expirations()
         except Exception as e:
-            print(f"⚠️ Defender Cleanup Error: {e}")
+            logger.error(f"Defender Cleanup Error: {e}")
         await asyncio.sleep(60)
 
 async def broadcast_system_metrics():
@@ -104,8 +111,124 @@ async def broadcast_system_metrics():
             for tenant_id in ws_manager.active_connections.keys():
                 if ws_manager.active_connections[tenant_id]:
                     await ws_manager.broadcast_stats(metrics, tenant_id)
+        except Exception as e:
+            logger.error(f"Metrics Broadcast Error: {e}")
         finally:
             await asyncio.sleep(2)
+
+
+async def scheduled_retrain_daemon():
+    """
+    🕰️ Autonomous Retraining Daemon
+    Ensures the model is updated periodically or when drift is detected.
+    1. Runs every 24 hours (Scheduled update).
+    2. Checks for detected drift every 1 hour (Emergency update).
+    """
+    from app.ai_engine.learner import continuous_learner
+    
+    while True:
+        try:
+            # 1. EMERGENCY: Check for Concept Drift
+            if continuous_learner.is_drift_detected:
+                # We need at least some data to retrain
+                if len(continuous_learner.labeled_features) > 20:
+                    logger.warning("📉 DRIFT DETECTED: Triggering Emergency Retrain to adapt to new patterns.")
+                    continuous_learner.retrain(reason="Drift-Triggered Recovery")
+            
+            # 2. MAINTENANCE: Daily Refresh (at 3 AM UTC)
+            now = datetime.utcnow()
+            if now.hour == 3 and now.minute == 0:
+                if len(continuous_learner.labeled_features) > 10:
+                    logger.info("📅 SCHEDULED: Initializing daily model optimization.")
+                    continuous_learner.retrain(reason="Scheduled Daily Refresh")
+        except Exception as e:
+            logger.error(f"Retrain Daemon Error: {e}")
+        
+        # Granularity: 60 seconds
+        await asyncio.sleep(60)
+
+
+async def system_metrics_daemon():
+    """
+    📊 Continuous Production Observability
+    Samples host and application performance every 60 seconds and persists to DB.
+    """
+    from app.database import AsyncSessionLocal
+    from app.models.db_models import DBSystemMetric, DBSystemEvent
+    from app.collector.stream import stream_processor
+    from app.agents.orchestrator import soc_orchestrator
+    try:
+        import psutil
+    except ImportError:
+        psutil = None
+    
+    while True:
+        try:
+            # 1. Sample Host Metrics
+            cpu = psutil.cpu_percent() if psutil else 0.0
+            ram = psutil.virtual_memory().percent if psutil else 0.0
+            disk = psutil.disk_usage('/').percent if psutil else 0.0
+            
+            # 2. Sample App Metrics
+            queue_size = 0
+            if stream_processor.redis:
+                try:
+                    queue_size = await stream_processor.redis.llen("packet_queue")
+                except:
+                    pass
+            
+            pps = stream_processor.get_stats().get("packets_per_second", 0)
+            avg_lat = soc_orchestrator.avg_processing_ms
+            
+            active_workers = 0
+            if stream_processor.redis:
+                try:
+                    worker_keys = await stream_processor.redis.keys("worker:heartbeat:*")
+                    active_workers = len(worker_keys)
+                except:
+                    pass
+            
+            # 3. Persist to DB
+            async with AsyncSessionLocal() as db:
+                metric = DBSystemMetric(
+                    cpu_usage=float(cpu),
+                    ram_usage=float(ram),
+                    disk_usage=float(disk),
+                    active_workers=active_workers,
+                    queue_size=queue_size,
+                    packets_per_second=float(pps),
+                    avg_latency_ms=float(avg_lat),
+                    dropped_packets=stream_processor.dropped_packets
+                )
+                db.add(metric)
+                
+                # 4. Proactive Threshold Alerts
+                if ram > 90:
+                    alert_msg = f"🚨 HOST RAM EXHAUSTION: {ram}% usage. System instability imminent!"
+                    logger.critical(alert_msg)
+                    db.add(DBSystemEvent(
+                        level="CRITICAL",
+                        component="Host",
+                        message=alert_msg,
+                        tenant_id="default"
+                    ))
+                
+                if queue_size > 40000:
+                    alert_msg = f"⚠️ QUEUE PRESSURE: {queue_size} packets pending. Consider scaling workers."
+                    logger.warning(alert_msg)
+                    db.add(DBSystemEvent(
+                        level="WARNING",
+                        component="Queue",
+                        message=alert_msg,
+                        tenant_id="default"
+                    ))
+                
+                await db.commit()
+                
+        except Exception as e:
+            logger.error(f"Metrics Daemon Error: {e}")
+            
+        await asyncio.sleep(60)
 
 
 from collections import defaultdict
@@ -180,6 +303,48 @@ async def security_hardening_middleware(request: Request, call_next):
     return response
 
 
+# --- 🚨 GLOBAL EXCEPTION HANDLER (RESILIENCY LAYER) ---
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """
+    Catch-all exception handler for structured error responses.
+    Prevents raw 500 Internal Server Errors from reaching the client.
+    """
+    import traceback
+    from fastapi.responses import JSONResponse
+    from app.database import log_event
+    
+    # Generate unique Request ID for tracing
+    import uuid
+    request_id = str(uuid.uuid4())
+    
+    # Log detailed error to console and DB
+    error_msg = f"🔥 UNHANDLED ERROR [{request_id}]: {str(exc)}"
+    stack_trace = traceback.format_exc()
+    
+    # Persist the failure to the dashboard
+    log_event(
+        level="CRITICAL",
+        component="FastAPI-Shield",
+        message=error_msg,
+        stack_trace=stack_trace,
+        metadata={"path": request.url.path, "method": request.method}
+    )
+    
+    # Return structured JSON
+    return JSONResponse(
+        status_code=500,
+        content={
+            "status": "error",
+            "request_id": request_id,
+            "type": type(exc).__name__,
+            "detail": "A critical system error occurred. Our automated defense system has logged this incident.",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application startup and shutdown events."""
@@ -189,26 +354,36 @@ async def lifespan(app: FastAPI):
     print("╚═══════════════════════════════════════════════════════╝")
     print()
 
+    # Initialize System Observability
+    setup_logging()
+    set_db_logger(log_event)
+
+    # Start Database Batchers (High-Throughput Persistence)
+    inspection_batcher.start()
+    system_event_batcher.start()
+
     # Initialize PostgreSQL Storage
     try:
-        await init_db()
-        print("  ✅ PostgreSQL Database — CONNECTED")
+        # Use the hardened init_db with retry logic
+        await init_db(retries=10)
+        logger.info("PostgreSQL Database — CONNECTED")
     except Exception as e:
-        print(f"  ❌ PostgreSQL Error: Cannot connect to stealthvault_db! System degraded. ({e})")
+        logger.critical(f"FATAL: Database connection failed after multiple retries. ({e})")
+        # In a real enterprise app, we might exit(1) here if DB is strictly required
         
     # Start horizontal WebSocket listener
     try:
         await ws_manager.start()
-        print("  ✅ Distributed WebSocket Stream — OK")
+        logger.info("Distributed WebSocket Stream — OK")
     except Exception as e:
-        print(f"  ⚠️ WebSocket Manager Error: {e}")
+        logger.error(f"WebSocket Manager Error: {e}")
 
     # Start the stream processor
     try:
         await stream_processor.start()
-        print("  ✅ Stream Processor — ACTIVE")
+        logger.info("Stream Processor — ACTIVE")
     except Exception as e:
-        print(f"  ❌ Stream Processor Error: {e}")
+        logger.critical(f"Stream Processor Error: {e}")
     
     # Start Real-time Metrics Broadcast
     asyncio.create_task(broadcast_system_metrics())
@@ -216,6 +391,12 @@ async def lifespan(app: FastAPI):
     
     # Start persistence cleanup daemon
     asyncio.create_task(data_retention_daemon())
+    
+    # Start Autonomous Learning Pipeline
+    asyncio.create_task(scheduled_retrain_daemon())
+    
+    # Start Production Metrics Pipeline
+    asyncio.create_task(system_metrics_daemon())
     
     # Start Defender auto-unblock daemon
     asyncio.create_task(defender_cleanup_daemon())
@@ -260,7 +441,33 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     await stream_processor.stop()
+    
+    # Graceful Database Flush
+    await inspection_batcher.stop()
+    await system_event_batcher.stop()
+    
     print("\n  🛡️  StealthVault AI — SHUTTING DOWN\n")
+
+
+class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
+    """
+    🛡️ ANTI-DOS: Payload Capping
+    Rejects any request body larger than 10MB.
+    Prevents memory/disk exhaustion from oversized network packets or malicious uploads.
+    """
+    def __init__(self, app, max_size_bytes: int = 10 * 1024 * 1024):
+        super().__init__(app)
+        self.max_size = max_size_bytes
+
+    async def dispatch(self, request: Request, call_next):
+        if request.method in ("POST", "PUT", "PATCH"):
+            content_length = request.headers.get("content-length")
+            if content_length and int(content_length) > self.max_size:
+                return JSONResponse(
+                    status_code=413,
+                    content={"detail": f"Request entity too large. Maximum payload is 10MB."}
+                )
+        return await call_next(request)
 
 
 # Create app
@@ -292,9 +499,15 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.middleware("http")(security_hardening_middleware)
 
 # CORS (allow dashboard frontend)
+# 🛡️ PRODUCTION SECURITY STACK
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware) # Global Rate Limiting
+app.add_middleware(RequestSizeLimitMiddleware) # Global Size Capping
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

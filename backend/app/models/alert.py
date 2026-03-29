@@ -3,7 +3,7 @@ StealthVault AI - Data Models
 Pydantic schemas for network packets, threats, and alerts.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, IPvAnyAddress, conint, constr
 from typing import Optional
 from datetime import datetime
 from enum import Enum
@@ -44,19 +44,22 @@ class Protocol(str, Enum):
 
 
 class NetworkPacket(BaseModel):
-    """Raw network packet data."""
+    """
+    🛡️ Hardened Network Packet Schema
+    Enforces strict IP and Port validation to prevent injection.
+    """
     id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8])
     timestamp: datetime = Field(default_factory=datetime.utcnow)
-    tenant_id: str = "default"  # Required for SaaS routing
-    src_ip: str
-    dst_ip: str
-    src_port: int = 0
-    dst_port: int = 0
+    tenant_id: constr(min_length=1, max_length=50) = "default"
+    src_ip: IPvAnyAddress
+    dst_ip: IPvAnyAddress
+    src_port: conint(ge=0, le=65535) = 0
+    dst_port: conint(ge=0, le=65535) = 0
     protocol: Protocol = Protocol.TCP
-    packet_size: int = 0
-    flags: str = ""
-    payload_size: int = 0
-    ttl: int = 64
+    packet_size: conint(ge=0) = 0
+    flags: constr(max_length=20) = ""
+    payload_size: conint(ge=0) = 0
+    ttl: conint(ge=0, le=255) = 64
     duration: float = 0.0
 
 
@@ -84,6 +87,10 @@ class AnomalyResult(BaseModel):
     is_anomaly: bool
     anomaly_score: float = Field(ge=0.0, le=1.0)
     confidence: float = Field(ge=0.0, le=1.0)
+    
+    # 🧠 EXPLAINABILITY (XAI)
+    feature_contributions: dict[str, float] = {} # Feature -> % impact
+    explanation: Optional[str] = None
 
 
 class ClassificationResult(BaseModel):
@@ -91,6 +98,10 @@ class ClassificationResult(BaseModel):
     attack_type: AttackType
     confidence: float = Field(ge=0.0, le=1.0)
     probabilities: dict[str, float] = {}
+    
+    # 🧠 EXPLAINABILITY (XAI)
+    feature_contributions: dict[str, float] = {}
+    explanation: Optional[str] = None
 
 
 class RiskScore(BaseModel):
@@ -142,3 +153,12 @@ class DashboardStats(BaseModel):
     top_attackers: list[dict] = []
     packets_per_minute: float = 0.0
     system_status: str = "ACTIVE"
+
+
+class RegisterInput(BaseModel):
+    """SaaS Onboarding Input."""
+    tenant_name: str
+    username: str
+    password: str
+    email: Optional[str] = None
+    plan: str = "FREE" # FREE, PRO, ENTERPRISE

@@ -15,6 +15,10 @@ from app.database import get_db
 from app.models.db_models import DBUser, DBTenant
 from app.core.limiter import limiter
 from fastapi import Request
+from app.core.audit import log_audit
+from app.models.alert import RegisterInput
+from app.core.security import get_password_hash
+import secrets
 
 # The secret key should come from env or config. Hardcoded for Phase 4 immediate auth.
 SECRET_KEY = "STEALTHVAULT_SUPER_SECRET_KEY_V1"
@@ -91,6 +95,15 @@ async def login_for_access_token(
     
     # Secure Password Verification (Bcrypt)
     if not user or not verify_password(form_data.password, user.password_hash):
+        # 🛡️ AUDIT: Failed Login Attempt
+        await log_audit(
+            action="LOGIN",
+            target=form_data.username,
+            tenant_id="default",
+            result="FAILURE",
+            message="Invalid credentials",
+            metadata={"ip": request.client.host}
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -107,4 +120,84 @@ async def login_for_access_token(
         }, 
         expires_delta=access_token_expires
     )
+
+    # 🛡️ AUDIT: Successful Login
+    await log_audit(
+        action="LOGIN",
+        target=user.username,
+        tenant_id=user.tenant_id,
+        user_id=user.id,
+        username=user.username,
+        result="SUCCESS",
+        metadata={"ip": request.client.host}
+    )
+
     return {"access_token": access_token, "token_type": "bearer"}
+
+
+@router.post("/register", status_code=status.HTTP_201_CREATED)
+async def register_tenant(
+    payload: RegisterInput,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    🚀 SAAS ONBOARDING (One-Click)
+    Creates a new Tenant and its first Admin user.
+    """
+    # 1. 🛡️ Verification
+    # Check if username or tenant exists
+    user_check = await db.execute(select(DBUser).where(DBUser.username == payload.username))
+    if user_check.scalars().first():
+        raise HTTPException(status_code=400, detail="Username already exists")
+        
+    tenant_check = await db.execute(select(DBTenant).where(DBTenant.name == payload.tenant_name))
+    if tenant_check.scalars().first():
+        raise HTTPException(status_code=400, detail="Tenant name already taken")
+
+    # 2. 🧱 Provisioning
+    # Set quotas based on Plan
+    quotas = {
+        "FREE": 100000,
+        "PRO": 5000000,
+        "ENTERPRISE": 100000000
+    }
+    limit = quotas.get(payload.plan.upper(), 100000)
+
+    # Create Tenant
+    new_tenant = DBTenant(
+        name=payload.tenant_name,
+        api_key=f"sv_{secrets.token_urlsafe(32)}",
+        plan=payload.plan.upper(),
+        monthly_packet_limit=limit
+    )
+    db.add(new_tenant)
+    await db.flush() # Get the new tenant ID
+
+    # Create Admin User
+    new_user = DBUser(
+        tenant_id=new_tenant.id,
+        username=payload.username,
+        email=payload.email,
+        password_hash=get_password_hash(payload.password),
+        roles=["admin", "billing_admin", "soc_manager"]
+    )
+    db.add(new_user)
+    
+    # 3. 📜 Audit Trail
+    await log_audit(
+        action="TENANT_REGISTER",
+        target=new_tenant.id,
+        tenant_id=new_tenant.id,
+        result="SUCCESS",
+        message=f"New SaaS onboarded: {payload.tenant_name} ({payload.plan})",
+        metadata={"email": payload.email, "username": payload.username}
+    )
+    
+    await db.commit()
+    
+    return {
+        "message": "Welcome to StealthVault AI!",
+        "tenant_id": new_tenant.id,
+        "api_key": new_tenant.api_key,
+        "plan": new_tenant.plan
+    }

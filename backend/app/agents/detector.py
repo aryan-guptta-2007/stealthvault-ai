@@ -33,6 +33,8 @@ from app.ai_engine.anomaly import anomaly_detector
 from app.ai_engine.classifier import attack_classifier
 from app.decision.risk_scorer import risk_scorer
 from app.decision.ip_reputation import ip_reputation_engine
+from app.ai_engine.learner import continuous_learner
+from app.core.logger import logger
 
 
 @dataclass
@@ -81,6 +83,8 @@ class DetectorAgent:
     - Compute risk score
     - Consolidate Distributed Behaviors
     - Cap Risk based on Signal Consensus
+    - 🧠 Explainability (XAI): Provide reasoning for model decisions
+    - 🛡️ Adversarial Protection: Detect and block model evasion attempts
     """
     
     def __init__(self):
@@ -145,6 +149,29 @@ class DetectorAgent:
             signal_count += 1
             confidence_sum += classification.confidence
             
+        # --- 🧠 ADVANCED AI HARDENING (XAI & ADVERSARIAL) ---
+        # 1. Explainability: Identify Top contributing features
+        feature_labels = ["src_port", "dst_port", "size", "payload", "ttl", "duration", "tcp", "udp", "icmp", "http"]
+        influential_features = {}
+        
+        # Simple local feature importance (Distance from mean weighted by global importance)
+        # Assuming features are scaled (0-1 approx)
+        for i, val in enumerate(feature_array[0][:len(feature_labels)]):
+            if abs(val) > 1.5: # 1.5 std dev from normal
+                influential_features[feature_labels[i]] = round(abs(val) * 0.2, 4)
+        
+        # Normalize and set XAI data
+        total_inf = sum(influential_features.values()) or 1.0
+        classification.feature_contributions = {k: round(v/total_inf, 4) for k, v in influential_features.items()}
+        classification.explanation = f"Flagged based on {', '.join(list(influential_features.keys())[:3])} deviation."
+        
+        # 2. Adversarial Protection: Stochastic Denoising
+        adversarial_risk = await self._check_adversarial_risk(feature_array)
+        if adversarial_risk > 0.7:
+            signal_count += 2
+            confidence_sum += adversarial_risk
+            classification.explanation += " | ⚠️ Potential Adversarial Evasion detected."
+            
         # Signal 3 & 4: Distributed Temporal IP State per Tenant
         src_ip = packet.src_ip
         tenant_id = getattr(packet, "tenant_id", "default")
@@ -203,12 +230,24 @@ class DetectorAgent:
             historical_risk_multiplier=ip_profile["historical_risk_multiplier"]
         )
         
-        if packet_count > 50 and "VOLATILITY_SPIKE" not in risk.behavior_flags:
+        if self.total_inspected > 50 and "VOLATILITY_SPIKE" not in risk.behavior_flags:
             risk.behavior_flags.append("VOLATILITY_SPIKE")
         if unique_ports > 15 and "STEALTH_PORT_SCAN" not in risk.behavior_flags:
             risk.behavior_flags.append("STEALTH_PORT_SCAN")
         if ip_profile["total_threats"] >= 2 and "REPEAT_OFFENDER" not in risk.behavior_flags:
             risk.behavior_flags.append("REPEAT_OFFENDER")
+            
+        # --- 🧠 CONTINUOUS LEARNING INTEGRATION ---
+        # 1. Self-Improvement Loop (High Confidence Reinforcement)
+        continuous_learner.auto_label_sample(feature_array, classification)
+        
+        # 2. Drift Monitoring (Is the model losing its touch?)
+        is_unknown = classification.attack_type == AttackType.UNKNOWN
+        continuous_learner.monitor_drift(
+            confidence=combined_confidence, 
+            is_unknown=is_unknown, 
+            is_anomaly=anomaly.is_anomaly
+        )
             
         verdict = DetectionVerdict(
             packet=packet,
@@ -223,6 +262,9 @@ class DetectorAgent:
         
         if verdict.is_threat:
             self.total_threats += 1
+        else:
+            # 🛡️ Build Trust for legitimate recurring users
+            await ip_reputation_engine.record_normal_traffic(src_ip, tenant_id)
         
         if verdict.needs_defense:
             self.total_escalated += 1
@@ -238,6 +280,28 @@ class DetectorAgent:
             "total_escalated_to_defender": self.total_escalated,
             "threat_rate": round(self.total_threats / max(self.total_inspected, 1), 4),
         }
+
+    async def _check_adversarial_risk(self, features: np.ndarray) -> float:
+        """
+        🛡️ ADVERSARIAL ML SHIELD
+        Detects if a packet is engineered to bypass detection (Evaded Attack).
+        Uses 'Stochastic Jitter' - if small perturbations flip the label,
+        it's high risk for being an adversarial example.
+        """
+        # 1. Base prediction
+        base_class = attack_classifier.predict(features).attack_type
+        
+        # 2. Add 'Adversarial Jitter'
+        jitter = np.random.normal(0, 0.05, features.shape)
+        perturbed_features = features + jitter
+        
+        # 3. New prediction
+        perturbed_class = attack_classifier.predict(perturbed_features).attack_type
+        
+        # If classes differ with tiny jitter, we are on a decision boundary (Adversarial)
+        if base_class != perturbed_class:
+            return 0.85 # High probability of exploit evasion
+        return 0.0
 
 # Singleton
 detector_agent = DetectorAgent()

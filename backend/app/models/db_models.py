@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Float, DateTime, Boolean, JSON, Integer, ForeignKey
+from sqlalchemy import Column, String, Float, DateTime, Boolean, JSON, Integer, ForeignKey, Index
 from sqlalchemy.orm import relationship
 import sys
 import os
@@ -16,6 +16,13 @@ class DBTenant(Base):
     api_key = Column(String(64), unique=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     
+    # 💰 SaaS Business Layer
+    plan = Column(String(20), default="FREE") # FREE, PRO, ENTERPRISE
+    is_active = Column(Boolean, default=True)
+    monthly_packet_limit = Column(Integer, default=100000)
+    current_usage_count = Column(Integer, default=0)
+    last_billing_reset = Column(DateTime, default=datetime.utcnow)
+    
     users = relationship("DBUser", back_populates="tenant", cascade="all, delete-orphan")
     alerts = relationship("DBAlert", back_populates="tenant", cascade="all, delete-orphan")
     inspections = relationship("DBInspectionLog", back_populates="tenant", cascade="all, delete-orphan")
@@ -27,14 +34,20 @@ class DBUser(Base):
     id = Column(String(36), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
     tenant_id = Column(String(36), ForeignKey("tenants.id"), index=True)
     username = Column(String(50), unique=True, index=True)
+    email = Column(String(100), unique=True, index=True, nullable=True) # Optional for now
     password_hash = Column(String(255))
     roles = Column(JSON) # e.g., ["admin", "soc_analyst"]
+    is_verified = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     
     tenant = relationship("DBTenant", back_populates="users")
 
 class DBAlert(Base):
     __tablename__ = "alerts"
+    __table_args__ = (
+        Index("idx_alerts_tenant_severity_ts", "tenant_id", "severity", "timestamp"),
+        Index("idx_alerts_tenant_ts", "tenant_id", "timestamp"),
+    )
 
     id = Column(String(36), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
     tenant_id = Column(String(36), ForeignKey("tenants.id"), index=True)
@@ -85,6 +98,10 @@ class DBInspectionLog(Base):
     Logs every packet analyzed by the system, threat or not.
     """
     __tablename__ = "inspection_logs"
+    __table_args__ = (
+        Index("idx_inspections_tenant_ts_ip", "tenant_id", "timestamp", "src_ip"),
+        Index("idx_inspections_threat_only", "is_threat"), # Partial index would be better, but this helps
+    )
     
     id = Column(String(36), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
     tenant_id = Column(String(36), ForeignKey("tenants.id"), index=True)
@@ -134,6 +151,9 @@ class DBSystemEvent(Base):
     Records all non-alert system events like worker status, database reconnects, etc.
     """
     __tablename__ = "system_events"
+    __table_args__ = (
+        Index("idx_sys_events_tenant_level_ts", "tenant_id", "level", "timestamp"),
+    )
     
     id = Column(String(36), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
     tenant_id = Column(String(36), ForeignKey("tenants.id"), index=True)
@@ -185,3 +205,56 @@ class DBModelMetric(Base):
     total_samples = Column(Integer)
     false_positives_count = Column(Integer)
     training_duration_s = Column(Float)
+
+
+class DBSystemMetric(Base):
+    """
+    📈 PERFORMANCE TRENDS
+    Persistent snapshots of system health and throughput.
+    Used for historical graphing in the production dashboard.
+    """
+    __tablename__ = "system_metrics"
+    
+    id = Column(String(36), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    
+    # Host Infrastructure
+    cpu_usage = Column(Float)
+    ram_usage = Column(Float)
+    disk_usage = Column(Float)
+    
+    # Application Layer
+    active_workers = Column(Integer)
+    queue_size = Column(Integer)
+    packets_per_second = Column(Float)
+    avg_latency_ms = Column(Float)
+    dropped_packets = Column(Integer)
+
+
+class DBAuditLog(Base):
+    """
+    📜 THE OVERWATCH: Forensic Audit Trail
+    Records all sensitive user and system actions.
+    Crucial for SOC compliance and internal security audits.
+    """
+    __tablename__ = "audit_logs"
+    __table_args__ = (
+        Index("idx_audit_tenant_action_ts", "tenant_id", "action", "timestamp"),
+    )
+    
+    id = Column(String(36), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    
+    # Who
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True) # None for system-level actions
+    username = Column(String(50), index=True)
+    tenant_id = Column(String(36), ForeignKey("tenants.id"), index=True)
+    
+    # What
+    action = Column(String(100), index=True) # e.g. LOGIN, RETRAIN_MODEL, BLOCK_IP
+    target = Column(String(100), index=True) # The affected resource ID or IP
+    result = Column(String(20)) # SUCCESS, FAILURE, DENIED
+    
+    # Context
+    metadata_json = Column(JSON, nullable=True) # Original request ID, Source IP, Browser, etc.
+    message = Column(String(500))

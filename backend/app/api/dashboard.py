@@ -61,6 +61,14 @@ async def get_dashboard(request: Request, current_user: object | None = Depends(
     )
     avg_risk = risk_result.scalar() or 0.0
 
+    # 🚀 Optimization: Calculate packets analyzed based on real inspection count
+    from app.models.db_models import DBInspectionLog
+    pkt_count_res = await db.execute(
+        select(func.count(DBInspectionLog.id))
+        .where(DBInspectionLog.tenant_id == tenant_id)
+    )
+    actual_pkt_count = pkt_count_res.scalar() or 0
+
     # Top attackers (by source IP frequency)
     ip_result = await db.execute(
         select(DBAlert.src_ip, func.count(DBAlert.id))
@@ -80,7 +88,7 @@ async def get_dashboard(request: Request, current_user: object | None = Depends(
         top_attackers.append({"ip": ip, "count": row[1], "severity": "high"})
 
     return DashboardStats(
-        total_packets_analyzed=total_alerts * 5, # Extrapolate packets for tenant
+        total_packets_analyzed=actual_pkt_count,
         total_alerts=total_alerts,
         critical_alerts=critical,
         high_alerts=high,

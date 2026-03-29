@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  # 🚦 ENTRYPOINT: Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: stealthvault_proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - certbot_conf:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    depends_on:
+      - backend
+      - frontend
+    restart: always
+
+  # 🧠 THE SOC BRAIN: Backend & AI Workers
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: stealthvault_backend_prod
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://stealthadmin:$${POSTGRES_PASSWORD:-stealthpassword}@postgres:5432/stealthvault
+      - REDIS_URL=redis://redis:6379/0
+      - STEALTH_SIMULATION_MODE=false
+      - SECRET_KEY=$${SECRET_KEY:-SUPER_SECRET_CHANGE_ME}
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          memory: 1G
+    volumes:
+      - backend_data:/app/data
+    restart: always
+
+  # 🖥️ THE DASHBOARD: SaaS Frontend
+  frontend:
+    build: 
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: stealthvault_frontend_prod
+    restart: always
+
+  # ⚡ NEURAL BUS: Persistence Enabled
+  redis:
+    image: redis:alpine
+    container_name: stealthvault_redis_prod
+    command: redis-server --appendonly yes --maxmemory 1gb --maxmemory-policy allkeys-lru
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
+    volumes:
+      - redis_data:/data
+    restart: always
+
+  # 🗃️ AUDIT LEDGER: Hardened PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    container_name: stealthvault_db_prod
+    environment:
+      POSTGRES_USER: stealthadmin
+      POSTGRES_PASSWORD: $${POSTGRES_PASSWORD:-stealthpassword}
+      POSTGRES_DB: stealthvault
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stealthadmin -d stealthvault"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  backend_data:
+  redis_data:
+  postgres_data:
+  certbot_conf:
+  certbot_www:

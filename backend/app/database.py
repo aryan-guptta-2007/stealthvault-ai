@@ -18,8 +18,8 @@ engine = create_async_engine(
     DATABASE_URL, 
     echo=False, 
     future=True,
-    pool_size=20,
-    max_overflow=10,
+    pool_size=50,
+    max_overflow=20,
     pool_pre_ping=True,      # 🛡️ Checks connection health before use
     pool_recycle=3600,     # ♻️ Recycles connections every hour to prevent stale links
     connect_args={
@@ -39,11 +39,27 @@ async def get_db():
     async with AsyncSessionLocal() as session:
         yield session
 
-async def init_db():
-    """Initializes the database tables (used on startup)."""
-    async with engine.begin() as conn:
-        # Create all tables if they don't exist
-        await conn.run_sync(Base.metadata.create_all)
+async def init_db(retries: int = 5):
+    """Initializes the database tables with retry logic (used on startup)."""
+    import asyncio
+    from sqlalchemy.exc import OperationalError
+    
+    attempt = 0
+    while attempt < retries:
+        try:
+            async with engine.begin() as conn:
+                # Create all tables if they don't exist
+                await conn.run_sync(Base.metadata.create_all)
+            print("  ✅ PostgreSQL Database Structure — VERIFIED")
+            return
+        except (OperationalError, Exception) as e:
+            attempt += 1
+            if attempt >= retries:
+                print(f"  ❌ PostgreSQL Failure after {retries} attempts: {e}")
+                raise
+            wait = 2 ** attempt
+            print(f"  ⚠️  DB Connection Failed (Attempt {attempt}/{retries}). Retrying in {wait}s...")
+            await asyncio.sleep(wait)
 
 async def persist_soc_results(verdict, story=None, retries: int = 3):
     """
@@ -57,13 +73,15 @@ async def persist_soc_results(verdict, story=None, retries: int = 3):
     from app.models.db_models import DBAlert, DBBlockedIP, DBInspectionLog, DBAttackStory, DBIPReputation
     from sqlalchemy.exc import IntegrityError, OperationalError
     from sqlalchemy import select, update
+    from app.core.batch_sqla import inspection_batcher
     import asyncio
+    from datetime import datetime
     
     attempt = 0
     while attempt < retries:
         async with AsyncSessionLocal() as db:
             try:
-                # 1. ALWAYS: Create the Audit Log (The Full Decision Trail)
+                # 1. ALWAYS: Buffer the Inspection Log (Batching for Scale)
                 db_log = DBInspectionLog(
                     tenant_id=verdict.detection.packet.tenant_id,
                     timestamp=verdict.detection.packet.timestamp or datetime.utcnow(),
@@ -83,7 +101,7 @@ async def persist_soc_results(verdict, story=None, retries: int = 3):
                         "signal_count": verdict.detection.signal_count
                     }
                 )
-                db.add(db_log)
+                await inspection_batcher.add(db_log)
 
                 # 2. IF THREAT: Store as Alert
                 if verdict.detection.is_threat:
@@ -191,21 +209,20 @@ async def persist_system_event(level: str, component: str, message: str, tenant_
     from app.models.db_models import DBSystemEvent
     from datetime import datetime
     
-    async with AsyncSessionLocal() as db:
-        try:
-            event = DBSystemEvent(
-                tenant_id=tenant_id,
-                level=level,
-                component=component,
-                message=message,
-                stack_trace=stack_trace,
-                metadata_json=metadata
-            )
-            db.add(event)
-            await db.commit()
-        except Exception as e:
-            print(f"⚠️ Failed to persist system event: {e}")
-            await db.rollback()
+    from app.core.batch_sqla import system_event_batcher
+    
+    try:
+        event = DBSystemEvent(
+            tenant_id=tenant_id,
+            level=level,
+            component=component,
+            message=message,
+            stack_trace=stack_trace,
+            metadata_json=metadata
+        )
+        await system_event_batcher.add(event)
+    except Exception as e:
+        print(f"⚠️ Failed to buffer system event: {e}")
 
 def log_event(level: str, component: str, message: str, tenant_id: str = "default", stack_trace: str = None, metadata: dict = None):
     """

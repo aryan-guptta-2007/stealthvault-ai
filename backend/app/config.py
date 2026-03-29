@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     MAX_ALERTS: int = 1000
     MAX_TRAFFIC_HISTORY: int = 5000
 
+    # Redis Queue Control (Prevent OOM/Lag)
+    MAX_QUEUE_SIZE: int = 50000
+    CONGESTION_THRESHOLD: int = 10000
+    CRITICAL_THRESHOLD: int = 30000
+
     # WebSocket
     WS_BROADCAST_INTERVAL: float = 1.0
 

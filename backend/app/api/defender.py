@@ -3,6 +3,7 @@ from typing import Dict, List
 from app.agents.defender import defender_agent
 from app.api.auth import get_current_user
 from app.api.rbac import RoleChecker
+from app.core.audit import log_audit
 
 # RBAC Instances
 admin_only = Depends(RoleChecker(["admin"]))
@@ -50,12 +51,34 @@ async def clear_all_blocks(user: dict = admin_only):
     tenant_id = user.get("tenant_id", "default")
     try:
         count = defender_agent.clear_all_blocks(tenant_id)
+        
+        # 🛡️ AUDIT: Emergency Clear
+        await log_audit(
+            action="EMERGENCY_CLEAR_BLOCKS",
+            target=f"ALL ({count} rules)",
+            tenant_id=tenant_id,
+            user_id=user.get("uid"),
+            username=user.get("sub", "unknown"),
+            result="SUCCESS",
+            message=f"Operator cleared all {count} firewall rules"
+        )
+        
         return {
             "status": "success",
             "message": f"Emergency clear triggered. {count} rules removed.",
             "count": count
         }
     except Exception as e:
+        # 🛡️ AUDIT: Failed Emergency Clear
+        await log_audit(
+            action="EMERGENCY_CLEAR_BLOCKS",
+            target="ALL",
+            tenant_id=tenant_id,
+            user_id=user.get("uid"),
+            username=user.get("sub", "unknown"),
+            result="FAILURE",
+            message=str(e)
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -77,6 +100,18 @@ async def unblock_ip(ip: str, user: dict = admin_only):
     tenant_id = user.get("tenant_id", "default")
     try:
         action = defender_agent.unblock(ip, tenant_id)
+        
+        # 🛡️ AUDIT: Manual Unblock
+        await log_audit(
+            action="MANUAL_UNBLOCK",
+            target=ip,
+            tenant_id=tenant_id,
+            user_id=user.get("uid"),
+            username=user.get("sub", "unknown"),
+            result="SUCCESS" if action.success else "FAILURE",
+            message=f"Operator manually released IP from blocklist"
+        )
+        
         return {
             "status": "success" if action.success else "failed",
             "action": action.to_dict()
@@ -88,10 +123,34 @@ async def unblock_ip(ip: str, user: dict = admin_only):
 async def arm_defender(user: dict = admin_only):
     """ARM the defender: Autonomous blocking will be ACTIVE (DANGEROUS)."""
     tenant_id = user.get("tenant_id", "default")
-    return defender_agent.arm(tenant_id)
+    result = defender_agent.arm(tenant_id)
+    
+    # 🛡️ AUDIT: Defender Armed
+    await log_audit(
+        action="DEFENDER_ARMED",
+        target="AGENT_STATE",
+        tenant_id=tenant_id,
+        user_id=user.get("uid"),
+        username=user.get("sub", "unknown"),
+        result="SUCCESS",
+        message="System transitioned from Shadow Mode to ACTIVE ARMED status"
+    )
+    return result
 
 @router.post("/mode/disarm")
 async def disarm_defender(user: dict = admin_only):
     """DISARM the defender: Switch to Shadow Mode (SAFE)."""
     tenant_id = user.get("tenant_id", "default")
-    return defender_agent.disarm(tenant_id)
+    result = defender_agent.disarm(tenant_id)
+    
+    # 🛡️ AUDIT: Defender Disarmed
+    await log_audit(
+        action="DEFENDER_DISARMED",
+        target="AGENT_STATE",
+        tenant_id=tenant_id,
+        user_id=user.get("uid"),
+        username=user.get("sub", "unknown"),
+        result="SUCCESS",
+        message="System transitioned from ARMED to SAFE SHADOW MODE status"
+    )
+    return result

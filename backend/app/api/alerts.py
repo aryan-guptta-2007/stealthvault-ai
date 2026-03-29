@@ -3,7 +3,7 @@ StealthVault AI - Alerts API
 Endpoints for managing and retrieving security alerts.
 """
 
-from fastapi import APIRouter, Query, Depends, HTTPException
+from fastapi import APIRouter, Query, Depends, HTTPException, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import desc
@@ -13,6 +13,11 @@ from app.models.alert import ThreatAlert, Severity, NetworkPacket, AnomalyResult
 from app.api.auth import get_current_user, get_optional_user
 from app.core.limiter import limiter
 from fastapi import Request
+from pydantic import BaseModel
+from app.ai_engine.learner import continuous_learner
+from app.collector.extractor import extractor
+from app.core.audit import log_audit
+import numpy as np
 
 router = APIRouter(prefix="/alerts", tags=["Alerts"])
 
@@ -131,3 +136,117 @@ async def get_alert(request: Request, alert_id: str, current_user: object | None
         raise HTTPException(status_code=404, detail="Alert not found")
         
     return _db_alert_to_pydantic(db_alert, anonymize=is_public)
+
+
+# --- 🧪 FEEDBACK & CONTINUOUS LEARNING ---
+
+class FeedbackRequest(BaseModel):
+    """Analyst feedback for a specific alert."""
+    label: str  # The corrected AttackType name or value
+    is_normal: bool = False
+
+@router.post("/{alert_id}/confirm")
+@limiter.limit("20/minute")
+async def confirm_alert(
+    request: Request,
+    alert_id: str,
+    payload: FeedbackRequest = Body(...),
+    current_user: object = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    ✅ Analyst Confirmation
+    Validates the alert and feeds it to the Continuous Learning engine.
+    """
+    tenant_id = getattr(current_user, "tenant_id", "default")
+    
+    stmt = select(DBAlert).where(DBAlert.id == alert_id, DBAlert.tenant_id == tenant_id)
+    result = await db.execute(stmt)
+    db_alert = result.scalars().first()
+    
+    if not db_alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+        
+    # Extract features from the original packet data
+    packet = NetworkPacket(**db_alert.packet_data)
+    features = extractor.extract(packet)
+    feature_array = extractor.to_numpy(features)
+    
+    # Submit to learner
+    learn_result = continuous_learner.add_feedback(
+        features=feature_array,
+        confirmed_label=payload.label,
+        is_normal=payload.is_normal,
+        original_confidence=db_alert.risk_score,
+        signal_count=1 # Individual confirmation counts as 1 verified signal
+    )
+
+    # 🛡️ AUDIT: Analyst Confirmation
+    await log_audit(
+        action="CONFIRM_ALERT",
+        target=alert_id,
+        tenant_id=tenant_id,
+        user_id=getattr(current_user, "uid", None),
+        username=getattr(current_user, "username", "unknown"),
+        result="SUCCESS",
+        metadata={"label": payload.label, "is_normal": payload.is_normal}
+    )
+    
+    return {
+        "status": "confirmed",
+        "alert_id": alert_id,
+        "label": payload.label,
+        "learning": learn_result
+    }
+
+@router.post("/{alert_id}/reject")
+@limiter.limit("20/minute")
+async def reject_alert(
+    request: Request,
+    alert_id: str,
+    current_user: object = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    ❌ Analyst Rejection (False Positive)
+    Marks the alert as "Normal" and feeds it to the training set as a counter-example.
+    """
+    tenant_id = getattr(current_user, "tenant_id", "default")
+    
+    stmt = select(DBAlert).where(DBAlert.id == alert_id, DBAlert.tenant_id == tenant_id)
+    result = await db.execute(stmt)
+    db_alert = result.scalars().first()
+    
+    if not db_alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+        
+    packet = NetworkPacket(**db_alert.packet_data)
+    features = extractor.extract(packet)
+    feature_array = extractor.to_numpy(features)
+    
+    # Rejection always maps to "Normal"
+    learn_result = continuous_learner.add_feedback(
+        features=feature_array,
+        confirmed_label="Normal",
+        is_normal=True,
+        original_confidence=db_alert.risk_score,
+        signal_count=1
+    )
+
+    # 🛡️ AUDIT: Analyst Rejection
+    await log_audit(
+        action="REJECT_ALERT",
+        target=alert_id,
+        tenant_id=tenant_id,
+        user_id=getattr(current_user, "uid", None),
+        username=getattr(current_user, "username", "unknown"),
+        result="SUCCESS",
+        message="Alert marked as False Positive (Normal)"
+    )
+    
+    return {
+        "status": "rejected",
+        "alert_id": alert_id,
+        "label": "Normal",
+        "learning": learn_result
+    }

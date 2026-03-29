@@ -106,6 +106,11 @@ class DefenderAgent:
         # Load existing blocklists (Migrating to multi-tenant structure)
         self._blocklist_path = os.path.join(settings.DATA_DIR, "tenant_blocklists.json")
         self._load_blocklist()
+        
+        # 🧪 Simulation Mode (Skip real OS-level firewall calls)
+        self.simulation_mode = os.getenv("STEALTH_SIMULATION_MODE", "false").lower() == "true"
+        if self.simulation_mode:
+            print("  🧪 DEFENDER: Simulation Mode ACTIVE (Skipping real firewall calls)")
     
     def get_shadow_mode(self, tenant_id: str) -> bool:
         """Helper to get shadow mode for a tenant."""
@@ -193,6 +198,22 @@ class DefenderAgent:
                 success=True,
                 details="Monitoring for further behavioral evidence before automatic intervention.",
             ), tenant_id)
+
+        # 🪐 LEGITIMATE USER SAFETY CHECK
+        profile = await ip_reputation_engine.get_profile(src_ip, tenant_id)
+        trust_score = profile.get("trust_score", 0.5)
+        
+        if trust_score > 0.8:
+            # This is a highly trusted IP. Do not block automatically unless CRITICAL.
+            if severity != Severity.CRITICAL.value or confidence < 0.95:
+                return self._log_action(DefenseAction(
+                    action_type="protected_alert",
+                    target=src_ip,
+                    reason=f"High Trust IP ({trust_score:.2f}) — Block suppressed",
+                    severity=severity,
+                    success=True,
+                    details="This IP is a recognized long-term legitimate user. Automatic blocking is suppressed to prevent system disruption."
+                ), tenant_id)
 
         # 🪜 Multi-Tier Escalation Ladder
         profile = await ip_reputation_engine.get_profile(src_ip, tenant_id)
@@ -432,6 +453,9 @@ class DefenderAgent:
     
     def _block_ip_firewall(self, ip: str) -> bool:
         """Block an IP at the OS firewall level."""
+        if self.simulation_mode:
+            return True
+            
         try:
             if sys.platform == "win32":
                 rule_name = f"StealthVault_Block_{ip.replace('.', '_')}"
@@ -457,6 +481,9 @@ class DefenderAgent:
     
     def _unblock_ip_firewall(self, ip: str) -> bool:
         """Remove an IP block from the OS firewall."""
+        if self.simulation_mode:
+            return True
+            
         try:
             if sys.platform == "win32":
                 rule_name = f"StealthVault_Block_{ip.replace('.', '_')}"
