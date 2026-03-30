@@ -183,13 +183,10 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
-# 🔒 Register CORS (Production + Local)
+# 🔒 Final CORS Lock-in (Testing Phase)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://stealthvault-ai.vercel.app",
-        "http://localhost:3000"
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
