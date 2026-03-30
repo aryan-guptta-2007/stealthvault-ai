@@ -179,10 +179,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# 🔒 Register Foundation Security (Limiter + CSRF/WAF)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+
+# 🔒 Global CORS Unlock (Must be high in the stack)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False, # Must be False for global "*" origin
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 async def data_retention_daemon():
     """
@@ -418,7 +426,7 @@ async def security_hardening_middleware(request: Request, call_next):
         "script-src 'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com; "
         "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com; "
         "img-src 'self' fastapi.tiangolo.com data:; "
-        "connect-src 'self' ws://localhost:8000;"
+        "connect-src 'self' https://stealthvault-ai.onrender.com wss://stealthvault-ai.onrender.com ws://localhost:8000 http://localhost:8000;"
     )
     
     return response
@@ -495,14 +503,6 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
 # --- 🛡️ PRODUCTION SECURITY STACK & MIDDLEWARE ---
 app.middleware("http")(security_hardening_middleware)
 app.add_middleware(RequestSizeLimitMiddleware) 
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # Register API routers
 API_PREFIX = "/api/v1"
