@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { API } from "@/lib/api";
+import axios from "axios";
 
 export default function RegisterPage() {
   const [org, setOrg] = useState("");
@@ -11,7 +11,7 @@ export default function RegisterPage() {
 
   const handleRegister = async () => {
     try {
-      const res = await API.post("/api/v1/auth/register", {
+      const res = await axios.post("https://stealthvault-ai.onrender.com/api/v1/auth/register", {
         organization_name: org,
         username: username,
         email: email,
