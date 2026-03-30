@@ -183,11 +183,11 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
-# 🔒 Global CORS Unlock (Must be high in the stack)
+# 🔒 Global CORS Unlock (PART 1 — FULL OPEN)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False, # Must be False for global "*" origin
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
