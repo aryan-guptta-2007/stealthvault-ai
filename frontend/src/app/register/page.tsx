@@ -12,7 +12,7 @@ export default function RegisterPage() {
   const handleRegister = async () => {
     // 🧪 Payload Validation Log
     console.log("INITIALIZING ONBOARDING:", {
-      organization_name: org,
+      tenant_id: org,
       username: username,
       email: email,
       password: (password ? "********" : "EMPTY")
@@ -20,7 +20,7 @@ export default function RegisterPage() {
 
     try {
       const res = await axios.post("https://stealthvault-ai.onrender.com/api/v1/auth/register", {
-        organization_name: org,
+        tenant_id: org,
         username: username,
         email: email,
         password: password,
