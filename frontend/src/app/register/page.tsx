@@ -10,6 +10,14 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
 
   const handleRegister = async () => {
+    // 🧪 Payload Validation Log
+    console.log("INITIALIZING ONBOARDING:", {
+      organization_name: org,
+      username: username,
+      email: email,
+      password: (password ? "********" : "EMPTY")
+    });
+
     try {
       const res = await axios.post("https://stealthvault-ai.onrender.com/api/v1/auth/register", {
         organization_name: org,
@@ -21,8 +29,8 @@ export default function RegisterPage() {
       console.log("SUCCESS:", res.data);
       alert("Registered successfully 🚀");
     } catch (err: any) {
-      console.error("ERROR:", err);
-      alert("Registration failed ❌");
+      console.error("ERROR RESPONSE:", err.response?.data || err.message);
+      alert("Registration failed ❌ - See console for details");
     }
   };
 

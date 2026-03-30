@@ -150,9 +150,9 @@ async def register_tenant(
     if user_check.scalars().first():
         raise HTTPException(status_code=400, detail="Username already exists")
         
-    tenant_check = await db.execute(select(DBTenant).where(DBTenant.name == payload.tenant_name))
+    tenant_check = await db.execute(select(DBTenant).where(DBTenant.name == payload.organization_name))
     if tenant_check.scalars().first():
-        raise HTTPException(status_code=400, detail="Tenant name already taken")
+        raise HTTPException(status_code=400, detail="Organization name already taken")
 
     # 2. 🧱 Provisioning
     # Set quotas based on Plan
@@ -165,7 +165,7 @@ async def register_tenant(
 
     # Create Tenant
     new_tenant = DBTenant(
-        name=payload.tenant_name,
+        name=payload.organization_name,
         api_key=f"sv_{secrets.token_urlsafe(32)}",
         plan=payload.plan.upper(),
         monthly_packet_limit=limit
@@ -189,7 +189,7 @@ async def register_tenant(
         target=new_tenant.id,
         tenant_id=new_tenant.id,
         result="SUCCESS",
-        message=f"New SaaS onboarded: {payload.tenant_name} ({payload.plan})",
+        message=f"New SaaS onboarded: {payload.organization_name} ({payload.plan})",
         metadata={"email": payload.email, "username": payload.username}
     )
     

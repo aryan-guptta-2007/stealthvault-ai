@@ -157,7 +157,7 @@ class DashboardStats(BaseModel):
 
 class RegisterInput(BaseModel):
     """SaaS Onboarding Input."""
-    tenant_name: str
+    organization_name: str
     username: str
     password: str
     email: Optional[str] = None
