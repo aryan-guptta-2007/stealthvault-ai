@@ -4,7 +4,7 @@ import { useState } from "react";
 import { API } from "@/lib/api";
 
 export default function RegisterPage() {
-  const [tenantName, setTenantName] = useState("");
+  const [org, setOrg] = useState("");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -12,62 +12,81 @@ export default function RegisterPage() {
   const handleRegister = async () => {
     try {
       const res = await API.post("/api/v1/auth/register", {
-        tenant_name: tenantName,
-        username,
-        email,
-        password,
-        plan: "FREE",
+        organization_name: org,
+        username: username,
+        email: email,
+        password: password,
       });
 
-      console.log("REGISTER SUCCESS:", res.data);
+      console.log("SUCCESS:", res.data);
       alert("Registered successfully 🚀");
     } catch (err: any) {
-      console.error(err);
+      console.error("ERROR:", err);
       alert("Registration failed ❌");
     }
   };
 
   return (
-    <div className="flex h-screen items-center justify-center bg-black text-white">
-      <div className="bg-gray-900 p-8 rounded-xl w-96 shadow-lg">
-        <h1 className="text-2xl font-bold mb-6 text-center">
-          🧑‍💻 Register
-        </h1>
+    <div className="flex h-screen items-center justify-center bg-black text-white selection:bg-red-500/30">
+      <div className="bg-gray-950 border border-gray-800 p-10 rounded-[2rem] w-[450px] shadow-2xl relative overflow-hidden group">
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-600 via-red-400 to-red-600"></div>
+        
+        <div className="text-center mb-10">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-red-600/10 mb-4 group-hover:scale-110 transition-transform">
+             <span className="text-3xl">🛡️</span>
+          </div>
+          <h1 className="text-3xl font-black italic tracking-tighter uppercase font-mono">Join StealthVault</h1>
+          <p className="text-[10px] text-gray-500 font-bold uppercase tracking-[0.2em] mt-2">Initialize Your Identity</p>
+        </div>
 
-        <input
-          type="text"
-          placeholder="Organization Name"
-          className="w-full p-2 mb-4 rounded bg-black border border-gray-700"
-          onChange={(e) => setTenantName(e.target.value)}
-        />
+        <div className="space-y-4">
+          <div className="group/input relative">
+            <input
+              type="text"
+              placeholder="Organization Name"
+              className="w-full p-4 rounded-xl bg-black border border-gray-800 focus:border-red-600/50 focus:ring-1 focus:ring-red-600/30 transition-all outline-none text-sm placeholder:text-gray-700 font-mono"
+              onChange={(e) => setOrg(e.target.value)}
+            />
+          </div>
 
-        <input
-          type="text"
-          placeholder="Username"
-          className="w-full p-2 mb-4 rounded bg-black border border-gray-700"
-          onChange={(e) => setUsername(e.target.value)}
-        />
+          <div className="group/input relative">
+            <input
+              type="text"
+              placeholder="Username"
+              className="w-full p-4 rounded-xl bg-black border border-gray-800 focus:border-red-600/50 focus:ring-1 focus:ring-red-600/30 transition-all outline-none text-sm placeholder:text-gray-700 font-mono"
+              onChange={(e) => setUsername(e.target.value)}
+            />
+          </div>
 
-        <input
-          type="email"
-          placeholder="Email"
-          className="w-full p-2 mb-4 rounded bg-black border border-gray-700"
-          onChange={(e) => setEmail(e.target.value)}
-        />
+          <div className="group/input relative">
+            <input
+              type="email"
+              placeholder="Email"
+              className="w-full p-4 rounded-xl bg-black border border-gray-800 focus:border-red-600/50 focus:ring-1 focus:ring-red-600/30 transition-all outline-none text-sm placeholder:text-gray-700 font-mono"
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
 
-        <input
-          type="password"
-          placeholder="Password"
-          className="w-full p-2 mb-4 rounded bg-black border border-gray-700"
-          onChange={(e) => setPassword(e.target.value)}
-        />
+          <div className="group/input relative">
+            <input
+              type="password"
+              placeholder="Password"
+              className="w-full p-4 rounded-xl bg-black border border-gray-800 focus:border-red-600/50 focus:ring-1 focus:ring-red-600/30 transition-all outline-none text-sm placeholder:text-gray-700 font-mono"
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
 
-        <button
-          onClick={handleRegister}
-          className="w-full bg-blue-500 hover:bg-blue-600 p-2 rounded"
-        >
-          Register
-        </button>
+          <button
+            onClick={handleRegister}
+            className="w-full mt-6 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-widest p-4 rounded-xl shadow-[0_0_20px_rgba(220,38,38,0.3)] transition-all active:scale-95"
+          >
+            Create Global Account
+          </button>
+        </div>
+
+        <p className="mt-8 text-center text-[10px] text-gray-600 uppercase tracking-widest font-bold">
+          Already Enrolled? <a href="/login" className="text-red-500 hover:underline">Access Vault</a>
+        </p>
       </div>
     </div>
   );
