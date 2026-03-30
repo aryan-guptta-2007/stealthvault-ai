@@ -39,9 +39,13 @@ class IPReputationEngine:
     TTL_SECONDS = 60 * 60 * 24 * 7  # 7 Days Memory Decay
 
     def __init__(self):
-        self.redis = redis.Redis(
-            host='localhost', port=6379, db=0, decode_responses=True
-        )
+        try:
+            self.redis = redis.Redis(
+                host='localhost', port=6379, db=0, decode_responses=True,
+                socket_connect_timeout=2
+            )
+        except Exception:
+            self.redis = None
 
     def _get_key(self, ip: str, tenant_id: str = "default") -> str:
         return f"tenant:{tenant_id}:ip_profile:{ip}"
@@ -66,6 +70,9 @@ class IPReputationEngine:
 
     async def get_profile(self, ip: str, tenant_id: str = "default") -> IPProfile:
         """Fetch an IP's reputation profile from Redis."""
+        if not self.redis:
+            return self._default_profile(ip)
+            
         key = self._get_key(ip, tenant_id)
         data = await self.redis.get(key)
         
@@ -115,15 +122,9 @@ class IPReputationEngine:
         profile["trust_score"] = max(0.0, profile["trust_score"] - 0.2)
             
         key = self._get_key(ip, tenant_id)
-        await self.redis.setex(
-            key,
-            self.TTL_SECONDS,
-            json.dumps(profile)
-        )
-
-        key = self._get_key(ip, tenant_id)
-        await self.redis.setex(key, self.TTL_SECONDS, json.dumps(profile))
-
+        if self.redis:
+            await self.redis.setex(key, self.TTL_SECONDS, json.dumps(profile))
+        
     async def record_normal_traffic(self, ip: str, tenant_id: str = "default"):
         """Increments 'Normal' event count and slowly builds trust."""
         profile = await self.get_profile(ip, tenant_id)
@@ -141,7 +142,8 @@ class IPReputationEngine:
             profile["trust_score"] = min(0.9, profile["trust_score"] + 0.05)
             
         key = self._get_key(ip, tenant_id)
-        await self.redis.setex(key, self.TTL_SECONDS, json.dumps(profile))
+        if self.redis:
+            await self.redis.setex(key, self.TTL_SECONDS, json.dumps(profile))
 
 
 # Singleton

@@ -37,13 +37,18 @@ class StreamProcessor:
 
     def __init__(self, redis_url: str = "redis://localhost:6379/0"):
         # ⚡ Resilient Redis client settings
-        self.redis = redis.from_url(
-            redis_url, 
-            decode_responses=True,
-            retry_on_timeout=True,
-            socket_keepalive=True,
-            health_check_interval=30
-        )
+        try:
+            self.redis = redis.from_url(
+                redis_url, 
+                decode_responses=True,
+                retry_on_timeout=True,
+                socket_keepalive=True,
+                health_check_interval=30,
+                socket_connect_timeout=2
+            )
+        except Exception:
+            self.redis = None
+            
         self.is_running: bool = False
         self.redis_url = redis_url
 
@@ -81,7 +86,8 @@ class StreamProcessor:
         self.is_running = False
         if self.listener_task:
             self.listener_task.cancel()
-        await self.redis.close()
+        if self.redis:
+            await self.redis.close()
         logger.info("⚡ Stream processor stopped")
 
     async def submit(self, packet: NetworkPacket):
@@ -90,45 +96,54 @@ class StreamProcessor:
             self.total_processed += 1
             self._packet_times.append(time.time())
             
-            # --- 🛡️ TIERED BACKPRESSURE CONTROLS ---
-            queue_len = await self.redis.llen("packet_queue")
-            
-            # 1. Congestion Level: Start dropping minor packets
-            if queue_len > settings.CONGESTION_THRESHOLD:
-                # Basic priority check
-                priority = self._eval_priority(packet)
+            # --- 🛡️ TIERED BACKPRESSURE CONTROLS (Only if Distributed) ---
+            if self.redis:
+                queue_len = await self.redis.llen("packet_queue")
                 
-                # If congested, drop low priority
-                if priority < 1:
-                    self.dropped_packets += 1
-                    return
-                
-                # 2. Critical Level: Drop almost everything
-                if queue_len > settings.CRITICAL_THRESHOLD:
-                    # Drop even medium priority
-                    if priority < 2:
+                # 1. Congestion Level: Start dropping minor packets
+                if queue_len > settings.CONGESTION_THRESHOLD:
+                    # Basic priority check
+                    priority = self._eval_priority(packet)
+                    
+                    # If congested, drop low priority
+                    if priority < 1:
                         self.dropped_packets += 1
-                        # Log congestion warning every 30s
-                        if time.time() - self._last_congestion_alert > 30:
-                            logger.critical(f"⚠️ SYSTEM CONGESTION: Queue={queue_len}. Dropping all low/medium priority traffic!")
+                        return
+                    
+                    # 2. Critical Level: Drop almost everything
+                    if queue_len > settings.CRITICAL_THRESHOLD:
+                        # Drop even medium priority
+                        if priority < 2:
+                            self.dropped_packets += 1
+                            # Log congestion warning every 30s
+                            if time.time() - self._last_congestion_alert > 30:
+                                logger.critical(f"⚠️ SYSTEM CONGESTION: Queue={queue_len}. Dropping all low/medium priority traffic!")
+                                self._last_congestion_alert = time.time()
+                            return
+                    
+                    # 3. Overflow Recovery: Hard Drop to prevent OOM
+                    if queue_len >= settings.MAX_QUEUE_SIZE:
+                        self.dropped_packets += 1
+                        # Log overflow every 10s
+                        if time.time() - self._last_congestion_alert > 10:
+                            logger.critical(f"🚨 QUEUE OVERFLOW: Queue={queue_len}. Emergency drop initiated.")
                             self._last_congestion_alert = time.time()
                         return
-                
-                # 3. Overflow Recovery: Hard Drop to prevent OOM
-                if queue_len >= settings.MAX_QUEUE_SIZE:
-                    self.dropped_packets += 1
-                    # Log overflow every 10s
-                    if time.time() - self._last_congestion_alert > 10:
-                        logger.critical(f"🚨 QUEUE OVERFLOW: Queue={queue_len}. Emergency drop initiated.")
-                        self._last_congestion_alert = time.time()
-                    return
 
-            # Push to the heavy AI workers
-            packet_json = packet.model_dump_json()
-            await self.redis.rpush("packet_queue", packet_json)
-            
-            # Hard ceiling: Ensure queue never exceeds MAX_QUEUE_SIZE
-            await self.redis.ltrim("packet_queue", -settings.MAX_QUEUE_SIZE, -1)
+                # Push to the heavy AI workers
+                packet_json = packet.model_dump_json()
+                await self.redis.rpush("packet_queue", packet_json)
+                
+                # Hard ceiling: Ensure queue never exceeds MAX_QUEUE_SIZE
+                await self.redis.ltrim("packet_queue", -settings.MAX_QUEUE_SIZE, -1)
+            else:
+                # 🏘️ LOCAL FALLBACK: If no Redis, process directly on main thread
+                # This ensures the dashboard works even on Render Free/Dev without Redis
+                verdict = await detector_agent.inspect(packet)
+                await soc_orchestrator.process_verdict(verdict)
+                if verdict.is_threat:
+                    self.total_alerts += 1
+                    self._alert_times.append(time.time())
             
         except Exception as e:
             logger.error(f"Failed to submit to Redis: {e}")

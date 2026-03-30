@@ -19,7 +19,11 @@ class WebSocketManager:
 
     def __init__(self):
         self.active_connections: dict[str, list[WebSocket]] = defaultdict(list)
-        self.redis = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+        try:
+            self.redis = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+            # We don't ping here as it's async, but we'll handle it in the listener
+        except Exception:
+            self.redis = None
         self._listener_task = None
 
     async def connect(self, websocket: WebSocket, tenant_id: str = "default"):
@@ -36,6 +40,9 @@ class WebSocketManager:
 
     async def _redis_listener(self):
         """Background task that listens for tenant-specific Redis broadcasts and pushes to local WebSocket clients."""
+        if not self.redis:
+            return
+            
         pubsub = self.redis.pubsub()
         await pubsub.psubscribe("ws_broadcast:*")
         
@@ -74,7 +81,10 @@ class WebSocketManager:
             "timestamp": datetime.utcnow().isoformat(),
             "data": json.loads(alert.model_dump_json()),
         }
-        await self.redis.publish(f"ws_broadcast:{tenant_id}", json.dumps(data))
+        if self.redis:
+            await self.redis.publish(f"ws_broadcast:{tenant_id}", json.dumps(data))
+        else:
+            await self._broadcast_raw(json.dumps(data), tenant_id)
         
     async def broadcast_alert(self, alert: ThreatAlert):
         """Wrapper for old broadcast API."""
@@ -88,7 +98,10 @@ class WebSocketManager:
             "timestamp": datetime.utcnow().isoformat(),
             "data": stats,
         }
-        await self.redis.publish(f"ws_broadcast:{tenant_id}", json.dumps(data))
+        if self.redis:
+            await self.redis.publish(f"ws_broadcast:{tenant_id}", json.dumps(data))
+        else:
+            await self._broadcast_raw(json.dumps(data), tenant_id)
 
     async def start(self):
         if self._listener_task is None:

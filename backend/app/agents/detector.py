@@ -93,15 +93,18 @@ class DetectorAgent:
         self.total_threats: int = 0
         self.total_escalated: int = 0
         # ⚡ Resilient Redis client for sync requests
-        self.redis = redis.Redis(
-            host='localhost', 
-            port=6379, 
-            db=0, 
-            decode_responses=True,
-            retry_on_timeout=True,
-            socket_keepalive=True,
-            socket_connect_timeout=5
-        )
+        try:
+            self.redis = redis.Redis(
+                host='localhost', 
+                port=6379, 
+                db=0, 
+                decode_responses=True,
+                retry_on_timeout=True,
+                socket_keepalive=True,
+                socket_connect_timeout=2  # Faster timeout for failed environments
+            )
+        except Exception:
+            self.redis = None
     
     def _ensure_models_loaded(self):
         if not anomaly_detector.is_trained:
@@ -184,9 +187,12 @@ class DetectorAgent:
         try:
             # Track IP reputation in Redis
             scan_key = f"scan:{packet.tenant_id}:{packet.src_ip}"
-            await self._update_ip_reputation(scan_key, packet.dst_port)
+            if self.redis:
+                await self._update_ip_reputation(scan_key, packet.dst_port)
+                unique_ports = await self.redis.scard(scan_key)
+            else:
+                unique_ports = 0
             
-            unique_ports = await self.redis.scard(scan_key)
             if unique_ports > 15: # Stealth Scans touch many unique ports
                 signal_count += 1
                 confidence_sum += 0.90
