@@ -179,13 +179,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# 🔒 Production-Grade CORS Handshake (STEP 3)
+# 🔥 GLOBAL CORS UNLOCK (MANDATORY TEMP)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://stealthvault-ai.vercel.app",
-        "http://localhost:3000"
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
