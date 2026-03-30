@@ -575,6 +575,12 @@ async def health_check():
     }
 
 
+@app.get("/healthz")
+def healthz():
+    """Simple health check for platform probes."""
+    return {"status": "ok"}
+
+
 # WebSocket endpoint
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, token: str = None, tenant: str = "default"):
