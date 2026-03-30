@@ -468,7 +468,7 @@ async def global_exception_handler(request: Request, exc: Exception):
             "status": "error",
             "request_id": request_id,
             "type": type(exc).__name__,
-            "detail": "A critical system error occurred. Our automated defense system has logged this incident.",
+            "detail": f"🛡️ CRITICAL FAULT: {str(exc)}", # Expose for rapid debugging
             "timestamp": datetime.utcnow().isoformat()
         }
     )
