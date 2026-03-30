@@ -174,6 +174,10 @@ async def register_tenant(
     await db.flush() # Get the new tenant ID
 
     # Create Admin User
+    # 🧪 Forensic Debug (STEP 3 — CONFIRM DATA SOURCE)
+    print("PASSWORD:", payload.password)
+    print("LENGTH:", len(payload.password))
+
     new_user = DBUser(
         tenant_id=new_tenant.id,
         username=payload.username,
