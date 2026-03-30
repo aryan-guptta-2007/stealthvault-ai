@@ -79,7 +79,10 @@ class StreamProcessor:
         logger.info("⚡ Stream processor started (Redis Distributed Mode)")
         
         # Start a listener for alerts coming from the separate AI Worker
-        self.listener_task = asyncio.create_task(self._listen_for_alerts())
+        if self.redis:
+            self.listener_task = asyncio.create_task(self._listen_for_alerts())
+        else:
+            logger.info("⚡ Stream Processor: Redis is offline. Running in Local-Only mode.")
 
     async def stop(self):
         """Stop the stream processor."""
@@ -171,6 +174,9 @@ class StreamProcessor:
 
     async def _listen_for_alerts(self):
         """Runs in background to subscribe to processed ML results from the AI worker."""
+        if not self.redis:
+            return
+
         backoff = 1
         max_backoff = 60
         

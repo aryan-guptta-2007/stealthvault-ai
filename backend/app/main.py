@@ -95,12 +95,9 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.critical(f"Stream Processor Error: {e}")
     
-    # Start Real-time Metrics Broadcast
-    if ws_manager.redis:
-        asyncio.create_task(broadcast_system_metrics())
-        print("  📊 Observability Telemetry Started (Distributed)")
-    else:
-        print("  📊 Observability Telemetry Started (Local-only)")
+    # 📊 Metrics Broadcast is disabled in production (Local only via StreamProcessor)
+    # asyncio.create_task(broadcast_system_metrics())
+    print("  📊 Observability Telemetry Started (Local-only)")
     
     # Start persistence cleanup daemon
     asyncio.create_task(data_retention_daemon())
@@ -237,28 +234,8 @@ async def defender_cleanup_daemon():
         await asyncio.sleep(60)
 
 async def broadcast_system_metrics():
-    """Background loop to continuously push observability data to the UI via Pub/Sub."""
-    if not ws_manager.redis:
-        # If Redis is disabled, we don't need this broadcast loop as stats 
-        # are handled locally in StreamProcessor fallback
-        return
-
-    while True:
-        try:
-            metrics = await get_system_metrics()
-            # Publish to Redis so all horizontally scaled nodes receive it, per active tenant
-            for tenant_id in ws_manager.active_connections.keys():
-                if ws_manager.active_connections[tenant_id]:
-                    await ws_manager.broadcast_stats(metrics, tenant_id)
-        except Exception as e:
-            # Check if it's a connection error to avoid log spam
-            if "connecting to" in str(e).lower() or "connection refused" in str(e).lower():
-                ws_manager.redis = None # Disable for this session
-                logger.warning("Redis connection lost. Disabling metrics broadcast loop.")
-                break
-            logger.error(f"Metrics Broadcast Error: {e}")
-        finally:
-            await asyncio.sleep(2)
+    """Disabled in production to prevent Redis connection logging."""
+    return
 
 
 async def scheduled_retrain_daemon():
