@@ -179,7 +179,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# 🔥 GLOBAL CORS UNLOCK (MANDATORY TEMP)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
