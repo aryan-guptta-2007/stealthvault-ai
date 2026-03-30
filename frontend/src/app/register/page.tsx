@@ -12,18 +12,20 @@ export default function RegisterPage() {
   const handleRegister = async () => {
     // 🧪 Payload Validation Log
     console.log("INITIALIZING ONBOARDING:", {
-      tenant_id: org,
+      tenant_name: org,
       username: username,
       email: email,
-      password: (password ? "********" : "EMPTY")
+      password: (password ? "********" : "EMPTY"),
+      plan: "FREE"
     });
 
     try {
       const res = await axios.post("https://stealthvault-ai.onrender.com/api/v1/auth/register", {
-        tenant_id: org,
+        tenant_name: org,
         username: username,
         email: email,
         password: password,
+        plan: "FREE",
       });
 
       console.log("SUCCESS:", res.data);
