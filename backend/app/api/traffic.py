@@ -142,7 +142,7 @@ async def simulate_attack(
         "xss": "XSS"
     }
     
-    fixed_attack_type = attack_map.get(sim.attack_type.lower(), "Unknown")
+    verdict = attack_map.get(sim.attack_type.lower(), "Unknown")
     
     # 📉 PERSIST SIMULATED ALERT TO DB
     new_alert = DBAlert(
@@ -151,7 +151,7 @@ async def simulate_attack(
         timestamp=datetime.utcnow(),
         src_ip="192.168.1.100",
         dst_ip="10.0.0.5",
-        attack_type=fixed_attack_type,
+        attack_type=verdict,
         risk_score=0.9,
         severity="high",
         packet_data={
@@ -164,7 +164,7 @@ async def simulate_attack(
             "confidence": 0.92
         },
         classification_data={
-            "attack_type": fixed_attack_type,
+            "attack_type": verdict,
             "confidence": 0.95
         },
         risk_data={},
