@@ -30,6 +30,9 @@ class AnomalyDetector:
         self.is_trained: bool = False
         self._model_path = os.path.join(settings.MODELS_DIR, "anomaly_model.joblib")
         self._scaler_path = os.path.join(settings.MODELS_DIR, "anomaly_scaler.joblib")
+        
+        # 🚀 AUTO-LOAD: Try to load existing model on startup
+        self.load()
 
     def train(self, normal_data: np.ndarray) -> dict:
         """
@@ -111,7 +114,7 @@ class AnomalyDetector:
 
     def predict(self, features: np.ndarray) -> AnomalyResult:
         """
-        Predict whether a packet is anomalous.
+        Predict whether a packet is anomalous using ML (Isolation Forest).
         
         Args:
             features: numpy array of shape (1, n_features)
@@ -119,51 +122,69 @@ class AnomalyDetector:
         Returns:
             AnomalyResult with is_anomaly flag and scores
         """
-        if not self.is_trained:
-            # If not trained, return a moderate anomaly score
+        # 🏗️ FAIL-SAFE: If not trained, return neutral result
+        if not self.is_trained or self.model is None or self.scaler is None:
             return AnomalyResult(
                 is_anomaly=False,
-                anomaly_score=0.3,
-                confidence=0.1,
+                anomaly_score=0.45, # Baseline baseline
+                confidence=0.0,
+                explanation="AI Calibration in Progress (Rule Engine Active)"
             )
 
-        # Scale the input
-        scaled = self.scaler.transform(features)
+        try:
+            # Scale the input
+            scaled = self.scaler.transform(features)
 
-        # Get prediction (-1 = anomaly, 1 = normal)
-        prediction = self.model.predict(scaled)[0]
-        
-        # Get anomaly score (more negative = more anomalous)
-        raw_score = self.model.decision_function(scaled)[0]
-        
-        # Convert to 0-1 range (higher = more anomalous)
-        # Isolation Forest scores: negative = anomaly, positive = normal
-        anomaly_score = max(0.0, min(1.0, 0.5 - raw_score))
-        
-        # Confidence based on how extreme the score is
-        confidence = min(1.0, abs(raw_score) * 2)
+            # Get prediction (-1 = anomaly, 1 = normal)
+            prediction = self.model.predict(scaled)[0]
+            
+            # Get anomaly score (more negative = more anomalous)
+            # Isolation Forest decision_function range: (~ -0.5, ~ 0.5)
+            raw_score = self.model.decision_function(scaled)[0]
+            
+            # Convert to 0-1 range (higher = more anomalous)
+            # Center of the distribution (0.5) is the boundary
+            # Isolation Forest scores: negative = anomaly, positive = normal
+            anomaly_score = max(0.0, min(1.0, 0.5 - raw_score))
+            
+            # Confidence based on how extreme the score is from the decision boundary
+            confidence = min(1.0, abs(raw_score) * 4.0)
 
-        is_anomaly = prediction == -1 or anomaly_score > settings.ANOMALY_THRESHOLD
+            is_anomaly = prediction == -1 or anomaly_score > settings.ANOMALY_THRESHOLD
 
-        return AnomalyResult(
-            is_anomaly=is_anomaly,
-            anomaly_score=round(anomaly_score, 4),
-            confidence=round(confidence, 4),
-        )
+            return AnomalyResult(
+                is_anomaly=is_anomaly,
+                anomaly_score=round(anomaly_score, 4),
+                confidence=round(confidence, 4),
+                explanation="ML-Engine: Anomaly Identified" if is_anomaly else "ML-Engine: Normal Traffic Pattern"
+            )
+        except Exception as e:
+            # Silently fallback to neutral result if ML fails
+            return AnomalyResult(
+                is_anomaly=False,
+                anomaly_score=0.5,
+                confidence=0.1,
+                explanation=f"ML Processing Interruption: {str(e)}"
+            )
 
     def save(self):
         """Save model and scaler to disk."""
         if self.model and self.scaler:
+            if not os.path.exists(settings.MODELS_DIR):
+                os.makedirs(settings.MODELS_DIR, exist_ok=True)
             joblib.dump(self.model, self._model_path)
             joblib.dump(self.scaler, self._scaler_path)
 
     def load(self) -> bool:
         """Load model and scaler from disk."""
         if os.path.exists(self._model_path) and os.path.exists(self._scaler_path):
-            self.model = joblib.load(self._model_path)
-            self.scaler = joblib.load(self._scaler_path)
-            self.is_trained = True
-            return True
+            try:
+                self.model = joblib.load(self._model_path)
+                self.scaler = joblib.load(self._scaler_path)
+                self.is_trained = True
+                return True
+            except Exception:
+                return False
         return False
 
 

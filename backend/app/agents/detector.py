@@ -125,26 +125,33 @@ class DetectorAgent:
         now = time.time()
         
         try:
-            # Step 1: Feature extraction
+            # 🧠 HYBRID DETECTION PIPELINE (ML + RULES)
+            # Step 1: Feature extraction (Numerical for ML, Object for Rules)
             features = extractor.extract(packet)
             feature_array = extractor.to_numpy(features)
             
-            # 🔥 Step 2: Rule-Based Detection (Phase 4 REAL Logic)
-            anomaly = anomaly_detector.rule_based_predict(packet)
-            classification = attack_classifier.rule_based_classify(packet)
-            
-            # Step 3: ML fallback/secondary signals
+            # 🔥 PRIMARY: Machine Learning (Isolation Forest)
             ml_anomaly = anomaly_detector.predict(feature_array)
             ml_classification = attack_classifier.predict(feature_array)
+
+            # 🔥 SECONDARY: Rule Engine (Safety Net)
+            rule_anomaly = anomaly_detector.rule_based_predict(packet)
+            rule_classification = attack_classifier.rule_based_classify(packet)
+
+            # 📊 SENSORS MERGE: Favor ML intelligence, Fallback to Rules
+            anomaly = ml_anomaly
+            classification = ml_classification
+
+            # If Rules catch something ML missed (or if ML is low confidence)
+            if rule_anomaly.is_anomaly and (not anomaly.is_anomaly or anomaly.confidence < 0.6):
+                anomaly.is_anomaly = True
+                anomaly.anomaly_score = max(anomaly.anomaly_score, rule_anomaly.anomaly_score)
+                anomaly.explanation = f"{anomaly.explanation} | Detached Rule-Match: {rule_anomaly.explanation}"
             
-            # Merge explainability from ML if it exists
-            if ml_anomaly.is_anomaly and not anomaly.is_anomaly:
-                anomaly.explanation = f"{anomaly.explanation} | ML-Detected Anomaly"
-            
-            if ml_classification.attack_type != AttackType.NORMAL and classification.attack_type == AttackType.NORMAL:
-                classification.attack_type = ml_classification.attack_type
-                classification.confidence = ml_classification.confidence
-                classification.explanation = f"{classification.explanation} | ML-Classified: {ml_classification.attack_type.value}"
+            if rule_classification.attack_type != AttackType.NORMAL and (classification.attack_type == AttackType.NORMAL or classification.confidence < 0.5):
+                classification.attack_type = rule_classification.attack_type
+                classification.confidence = max(classification.confidence, rule_classification.confidence)
+                classification.explanation = f"{classification.explanation} | Detached Rule-Match: {rule_classification.explanation}"
         except Exception as e:
             log_event("ERROR", "DetectorAgent", f"Inspection failed for {packet.src_ip}: {e}", stack_trace=str(e))
             # Safe fallback: Treat as normal but log the failure
