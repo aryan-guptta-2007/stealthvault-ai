@@ -588,3 +588,10 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None, tenant: st
             await websocket.send_json({"type": "PONG", "data": data})
     except WebSocketDisconnect:
         ws_manager.disconnect(websocket, tenant_id)
+
+if __name__ == "__main__":
+    import uvicorn
+    # Render dynamic port binding
+    port = int(os.environ.get("PORT", 10000))
+    logger.info(f"🚀 Starting StealthVault AI Production Server on port {port}")
+    uvicorn.run(app, host="0.0.0.0", port=port)
