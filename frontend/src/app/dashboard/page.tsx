@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { API } from "@/lib/api";
 import { StatsCharts } from "@/components/dashboard/StatsCharts";
 import { BrainPanel } from "@/components/dashboard/BrainPanel";
-import { Activity, Shield, AlertTriangle, Cpu, Terminal } from "lucide-react";
+import { Activity, Shield, AlertTriangle, Cpu, Terminal, LogOut } from "lucide-react";
 
 interface BrainAnalysis {
   attack_name: string;
@@ -26,6 +27,7 @@ interface AlertData {
 }
 
 export default function Dashboard() {
+  const router = useRouter(); // 🚀 Next.js Navigation
   const [status, setStatus] = useState("Loading...");
   const [events, setEvents] = useState<string[]>([]);
   const [rawAlerts, setRawAlerts] = useState<AlertData[]>([]);
@@ -37,10 +39,12 @@ export default function Dashboard() {
   const [brainLoading, setBrainLoading] = useState(false);
 
   useEffect(() => {
-    // 🔐 PROTECT DASHBOARD
-    const token = localStorage.getItem("token");
+    // 🔐 PROTECT DASHBOARD: Guard unauthorized access
+    const token = localStorage.getItem("access_token") || localStorage.getItem("token");
+
     if (!token) {
-      window.location.href = "/login";
+      console.log("No authorization token detected. Redirecting to login...");
+      router.push("/login");
       return;
     }
 
@@ -79,7 +83,7 @@ export default function Dashboard() {
     };
 
     return () => ws.close();
-  }, []);
+  }, [router]);
 
   const handleAlertClick = async (alertId: string) => {
     setBrainLoading(true);
@@ -95,8 +99,9 @@ export default function Dashboard() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    window.location.href = "/"; // Back to landing page
+    console.log("Logging out of StealthVault...");
+    localStorage.clear(); // 🧹 FULL SESSION WIPE
+    router.push("/login");
   };
 
   if (!stats) return (
