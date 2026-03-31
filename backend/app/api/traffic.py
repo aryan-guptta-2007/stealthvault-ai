@@ -132,14 +132,19 @@ async def simulate_attack(
     """
     tenant_id = getattr(current_user, "tenant_id", "default")
     
-    # 📉 MAP SIMULATION TYPE TO PRODUCTION ENUM
+    # 📉 MAP SIMULATION TYPE TO PRODUCTION ENUM (STRICT MODE)
     attack_type_map = {
         "ddos": "DDoS",
         "bruteforce": "BruteForce",
         "portscan": "PortScan"
     }
     
-    fixed_attack_type = attack_type_map.get(sim.attack_type.lower(), "Normal")
+    raw_attack = sim.attack_type.lower().strip()
+    
+    if raw_attack not in attack_type_map:
+        raise HTTPException(status_code=400, detail=f"Invalid attack type: {raw_attack}")
+    
+    fixed_attack_type = attack_type_map[raw_attack]
     
     # 📉 PERSIST SIMULATED ALERT TO DB
     new_alert = DBAlert(
