@@ -157,7 +157,23 @@ export default function Dashboard() {
           </ul>
         </nav>
 
-        <div className="pt-6 border-t border-gray-900">
+        <div className="mt-8 pt-6 border-t border-gray-900 overflow-hidden">
+           <h3 className="text-[10px] font-black text-gray-600 uppercase tracking-widest mb-4">Live Alert Channels</h3>
+           <div className="space-y-3">
+              <div className="flex items-center gap-3 p-2.5 bg-gray-900/30 rounded-xl border border-gray-900 hover:border-blue-500/10 transition-all group">
+                 <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)] animate-pulse"></div>
+                 <span className="text-[10px] font-bold text-gray-400 group-hover:text-blue-400 transition-colors">Telegram BOT</span>
+                 <span className="ml-auto text-[8px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded-full font-black uppercase italic">Active</span>
+              </div>
+              <div className="flex items-center gap-3 p-2.5 bg-gray-900/30 rounded-xl border border-gray-900 hover:border-purple-500/10 transition-all group">
+                 <div className="w-2 h-2 rounded-full bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.5)] animate-pulse"></div>
+                 <span className="text-[10px] font-bold text-gray-400 group-hover:text-purple-400 transition-colors">Slack SOC</span>
+                 <span className="ml-auto text-[8px] bg-purple-500/10 text-purple-500 px-1.5 py-0.5 rounded-full font-black uppercase italic">Active</span>
+              </div>
+           </div>
+        </div>
+
+        <div className="mt-auto pt-6 border-t border-gray-900">
           <button
             onClick={handleLogout}
             className="w-full flex items-center justify-center gap-2 bg-gray-900 hover:bg-red-950/30 text-gray-400 hover:text-red-500 p-3 rounded-xl border border-gray-800 hover:border-red-500/30 transition-all duration-300"

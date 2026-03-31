@@ -27,6 +27,7 @@ from app.models.alert import (
     Severity,
     AttackType,
 )
+from app.services.notifications import notification_service
 
 
 @dataclass

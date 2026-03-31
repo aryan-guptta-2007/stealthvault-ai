@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     # WebSocket
     WS_BROADCAST_INTERVAL: float = 1.0
 
+    # 🔔 External Notifications (Option 3)
+    TELEGRAM_BOT_TOKEN: Optional[str] = None
+    TELEGRAM_CHAT_ID: Optional[str] = None
+    SLACK_WEBHOOK_URL: Optional[str] = None
+
     class Config:
         env_file = ".env"
         env_prefix = "SV_"

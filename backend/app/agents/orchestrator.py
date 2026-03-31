@@ -22,6 +22,7 @@ from app.agents.analyst import analyst_agent, ThreatIntelligence
 from app.agents.defender import defender_agent, DefenseAction
 from app.agents.story import story_engine
 from app.websocket.feed import ws_manager
+from app.services.notifications import notification_service
 from app.database import persist_soc_results, log_event
 from app.decision.ip_reputation import ip_reputation_engine
 from app.core.product import QuotaGuard
@@ -201,8 +202,10 @@ class SOCOrchestrator:
                 classification=verdict.classification,
                 risk=verdict.risk,
                 brain_analysis=intelligence.brain_analysis,
+                geo_location=verdict.geo_location if verdict.geo_location else None
             )
             await ws_manager.broadcast_alert(alert)
+            asyncio.create_task(notification_service.send_alert(alert))
             
             story = story_engine.add_event(
                 src_ip=packet.src_ip,
@@ -276,8 +279,10 @@ class SOCOrchestrator:
                 classification=verdict.classification,
                 risk=verdict.risk,
                 brain_analysis=intelligence.brain_analysis,
+                geo_location=verdict.geo_location if verdict.geo_location else None
             )
             await ws_manager.broadcast_alert(alert)
+            asyncio.create_task(notification_service.send_alert(alert))
             
             story = story_engine.add_event(
                 src_ip=packet.src_ip,
