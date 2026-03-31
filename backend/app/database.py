@@ -31,6 +31,7 @@ engine = create_async_engine(
 AsyncSessionLocal = async_sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False
 )
+SessionLocal = AsyncSessionLocal # ⚡ Alias for compatibility across project
 
 Base = declarative_base()
 
