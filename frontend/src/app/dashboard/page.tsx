@@ -49,19 +49,26 @@ export default function Dashboard() {
     }
 
     // Initial Stats Fetch
-    const fetchStats = async () => {
+    const fetchDashboardData = async () => {
       try {
-        const res = await API.get("/api/v1/dashboard/");
-        setStats(res.data);
-        setStatus(res.data.system_status.toLowerCase());
+        const statsRes = await API.get("/api/v1/dashboard/");
+        setStats(statsRes.data);
+        setStatus(statsRes.data.system_status.toLowerCase());
+
+        // 🔥 HISTORICAL SYNC: Get previous alerts for SOC feed
+        const alertsRes = await API.get("/api/v1/alerts/", { params: { limit: 20 } });
+        setRawAlerts(alertsRes.data);
       } catch (err) {
-        console.error("Dashboard Stats Fetch Failed:", err);
+        console.error("Dashboard Data Fetch Failed:", err);
       }
     };
 
-    fetchStats();
+    fetchDashboardData();
 
-    // 🔥 WebSocket connection
+    // 🔥 AUTO-REFRESH: Polling fallback every 5 seconds for stats
+    const interval = setInterval(fetchDashboardData, 5000);
+
+    // 🔥 WEBSOCKET: Real-time event stream
     const ws = new WebSocket("wss://stealthvault-ai.onrender.com/ws");
 
     ws.onmessage = (event) => {
@@ -73,7 +80,7 @@ export default function Dashboard() {
           const msg = `🚨 [${alert.risk.severity.toUpperCase()}] ${alert.classification.attack_type} intercepted from ${alert.packet.src_ip}`;
           
           setEvents((prev) => [msg, ...prev.slice(0, 19)]);
-          setRawAlerts((prev) => [alert, ...prev.slice(0, 19)]);
+          setRawAlerts((prev) => [alert, ...prev.slice(0, 19)]); // Prepend new alerts
         } else if (payload.type === "STATS_UPDATE") {
            setStats(payload.data);
         }
@@ -82,7 +89,10 @@ export default function Dashboard() {
       }
     };
 
-    return () => ws.close();
+    return () => {
+      clearInterval(interval);
+      ws.close();
+    };
   }, [router]);
 
   const handleAlertClick = async (alertId: string) => {
@@ -162,7 +172,14 @@ export default function Dashboard() {
             <h1 className="text-lg font-black tracking-tighter uppercase italic">Security Operations Center</h1>
             <p className="text-[10px] text-gray-500 uppercase tracking-widest">Instance: ALPHA-NODE-01</p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-6">
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-red-500/5 border border-red-500/10 rounded-full">
+                <span className="relative flex h-1.5 w-1.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500"></span>
+                </span>
+                <span className="text-[9px] font-black text-red-500 uppercase tracking-[0.2em]">Live Monitoring Active</span>
+            </div>
             <div className="flex items-center gap-2 bg-gray-900 border border-gray-800 px-4 py-1.5 rounded-full">
               <span className={`h-2 w-2 rounded-full ${status === 'active' || status === 'ok' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-yellow-500 animate-pulse'}`}></span>
               <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{status}</span>
@@ -253,12 +270,80 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="bg-gray-900/40 rounded-3xl border border-gray-800 shadow-2xl overflow-hidden transition-all duration-700">
+          <div className="bg-gray-900/40 rounded-3xl border border-gray-800 shadow-2xl overflow-hidden transition-all duration-700 mt-10">
             <div className="p-6 border-b border-gray-800 flex items-center justify-between">
               <h2 className="text-lg font-black tracking-tighter uppercase italic flex items-center gap-2">
-                <span className="text-red-500 animate-pulse">!</span> Intercepted Threats
+                <span className="text-red-500 animate-pulse">📡</span> Live Attack Feed
               </h2>
-...
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2 w-2">
+                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                   <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                </span>
+                <span className="text-[10px] text-red-600 font-black tracking-widest uppercase">Streaming Real-Time Alerts</span>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-800/50 bg-black/20">
+                    <th className="p-4 text-[10px] font-black uppercase tracking-widest text-gray-500">Timestamp</th>
+                    <th className="p-4 text-[10px] font-black uppercase tracking-widest text-gray-500">Source Node</th>
+                    <th className="p-4 text-[10px] font-black uppercase tracking-widest text-gray-500">Threat Vector</th>
+                    <th className="p-4 text-[10px] font-black uppercase tracking-widest text-gray-500">Risk Index</th>
+                    <th className="p-4 text-[10px] font-black uppercase tracking-widest text-gray-500 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800/30">
+                  {rawAlerts.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-20 text-center">
+                        <Activity className="w-10 h-10 text-gray-800 mx-auto mb-4 animate-pulse" />
+                        <p className="text-[10px] text-gray-600 font-black uppercase tracking-[0.3em] italic">Scanning network packets... All clear.</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    rawAlerts.map((alert, i) => (
+                      <tr 
+                        key={i} 
+                        onClick={() => handleAlertClick(alert.id)}
+                        className="group hover:bg-red-500/5 cursor-pointer transition-colors"
+                      >
+                        <td className="p-4">
+                          <span className="text-[10px] font-mono text-gray-500 group-hover:text-gray-300 transition-colors">
+                            {new Date(alert.timestamp).toLocaleTimeString()}
+                          </span>
+                        </td>
+                        <td className="p-4">
+                          <div className="flex items-center gap-2">
+                             <div className={`w-1.5 h-1.5 rounded-full ${alert.risk.severity === 'critical' ? 'bg-red-500 shadow-[0_0_8px_red]' : 'bg-orange-500'}`}></div>
+                             <span className="text-sm font-black italic tracking-tighter group-hover:text-red-400 transition-colors">{alert.packet.src_ip}</span>
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded bg-black/40 border ${alert.risk.severity === 'critical' ? 'text-red-500 border-red-900/50' : 'text-orange-400 border-orange-900/50'}`}>
+                            {alert.classification.attack_type}
+                          </span>
+                        </td>
+                        <td className="p-4">
+                          <div className="flex items-center gap-2">
+                            <div className="w-12 h-1 bg-gray-800 rounded-full overflow-hidden">
+                              <div className="h-full bg-red-500" style={{ width: `${alert.risk.score * 100}%` }}></div>
+                            </div>
+                            <span className="text-[10px] font-black text-gray-400 italic">{(alert.risk.score * 100).toFixed(0)}%</span>
+                          </div>
+                        </td>
+                        <td className="p-4 text-right">
+                           <button className="text-[10px] font-black uppercase tracking-widest bg-gray-900 group-hover:bg-red-600/20 text-gray-600 group-hover:text-red-500 px-3 py-1 rounded-lg border border-gray-800 group-hover:border-red-500/30 transition-all flex items-center gap-1 ml-auto">
+                             Deep Dive <ChevronRight className="w-3 h-3" />
+                           </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </main>
