@@ -96,10 +96,13 @@ async def login_for_access_token(
     # Secure Password Verification (Bcrypt)
     if not user or not verify_password(form_data.password, user.password_hash):
         # 🛡️ AUDIT: Failed Login Attempt
+        # Use the actual tenant if user was found, else "global"
+        failed_tenant = user.tenant_id if user else "global"
+        
         await log_audit(
             action="LOGIN",
             target=form_data.username,
-            tenant_id="default",
+            tenant_id=failed_tenant,
             result="FAILURE",
             message="Invalid credentials",
             metadata={"ip": request.client.host}
@@ -144,67 +147,74 @@ async def register_tenant(
     🚀 SAAS ONBOARDING (One-Click)
     Creates a new Tenant and its first Admin user.
     """
-    # 1. 🛡️ Verification
-    # Check if username or tenant exists
-    user_check = await db.execute(select(DBUser).where(DBUser.username == payload.username))
-    if user_check.scalars().first():
-        raise HTTPException(status_code=400, detail="Username already exists")
+    try:
+        # 1. 🛡️ Verification
+        # Check if username or tenant exists
+        user_check = await db.execute(select(DBUser).where(DBUser.username == payload.username))
+        if user_check.scalars().first():
+            raise HTTPException(status_code=400, detail="Username already exists")
+            
+        tenant_check = await db.execute(select(DBTenant).where(DBTenant.name == payload.tenant_name))
+        if tenant_check.scalars().first():
+            raise HTTPException(status_code=400, detail="Tenant name already taken")
+
+        # 2. 🧱 Provisioning
+        # Set quotas based on Plan
+        quotas = {
+            "FREE": 100000,
+            "PRO": 5000000,
+            "ENTERPRISE": 100000000
+        }
+        limit = quotas.get(payload.plan.upper(), 100000)
+
+        # Create Tenant
+        new_tenant = DBTenant(
+            name=payload.tenant_name,
+            api_key=f"sv_{secrets.token_urlsafe(32)}",
+            plan=payload.plan.upper(),
+            monthly_packet_limit=limit
+        )
+        db.add(new_tenant)
+        await db.flush() # Get the new tenant ID
+
+        # Create Admin User
+        new_user = DBUser(
+            tenant_id=new_tenant.id,
+            username=payload.username,
+            email=payload.email,
+            password_hash=get_password_hash(payload.password),
+            roles=["admin", "billing_admin", "soc_manager"]
+        )
+        db.add(new_user)
         
-    tenant_check = await db.execute(select(DBTenant).where(DBTenant.name == payload.tenant_name))
-    if tenant_check.scalars().first():
-        raise HTTPException(status_code=400, detail="Tenant name already taken")
-
-    # 2. 🧱 Provisioning
-    # Set quotas based on Plan
-    quotas = {
-        "FREE": 100000,
-        "PRO": 5000000,
-        "ENTERPRISE": 100000000
-    }
-    limit = quotas.get(payload.plan.upper(), 100000)
-
-    # Create Tenant
-    new_tenant = DBTenant(
-        name=payload.tenant_name,
-        api_key=f"sv_{secrets.token_urlsafe(32)}",
-        plan=payload.plan.upper(),
-        monthly_packet_limit=limit
-    )
-    db.add(new_tenant)
-    await db.flush() # Get the new tenant ID
-
-    # Create Admin User
-    # 🧪 Forensic Debug (STEP 3 — CONFIRM DATA SOURCE)
-    print("PASSWORD:", payload.password)
-    print("LENGTH:", len(payload.password))
-
-    new_user = DBUser(
-        tenant_id=new_tenant.id,
-        username=payload.username,
-        email=payload.email,
-        password_hash=get_password_hash(payload.password),
-        roles=["admin", "billing_admin", "soc_manager"]
-    )
-    db.add(new_user)
-    
-    # 3. 📜 Audit Trail
-    await log_audit(
-        action="TENANT_REGISTER",
-        target=new_tenant.id,
-        tenant_id=new_tenant.id,
-        result="SUCCESS",
-        message=f"New SaaS onboarded: {payload.tenant_name} ({payload.plan})",
-        metadata={"email": payload.email, "username": payload.username}
-    )
-    
-    await db.commit()
-    
-    return {
-        "message": "Welcome to StealthVault AI!",
-        "tenant_id": new_tenant.id,
-        "api_key": new_tenant.api_key,
-        "plan": new_tenant.plan
-    }
+        # 3. 📜 Audit Trail
+        await log_audit(
+            action="TENANT_REGISTER",
+            target=new_tenant.id,
+            tenant_id=new_tenant.id,
+            result="SUCCESS",
+            message=f"New SaaS onboarded: {payload.tenant_name} ({payload.plan})",
+            metadata={"email": payload.email, "username": payload.username}
+        )
+        
+        await db.commit()
+        
+        return {
+            "message": "Welcome to StealthVault AI!",
+            "tenant_id": new_tenant.id,
+            "api_key": new_tenant.api_key,
+            "plan": new_tenant.plan
+        }
+    except HTTPException as he:
+        # Re-raise HTTPExceptions as they are already handled
+        raise he
+    except Exception as e:
+        # Log and wrap generic exceptions
+        print(f"CRITICAL ERROR in register_tenant: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Registration failed: {str(e)}"
+        )
 
 
 @router.post("/beta/waitlist", status_code=status.HTTP_201_CREATED)

@@ -35,58 +35,67 @@ async def register_tenant(request: TenantRegister, db: AsyncSession = Depends(ge
     generates a unique Sensor API Key, and sets up the primary 
     Admin account for their team.
     """
-    # 1. Check if tenant name already exists
-    result = await db.execute(select(DBTenant).where(DBTenant.name == request.tenant_name))
-    if result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A tenant with this name already exists."
-        )
-    
-    # 2. Check if username already exists
-    user_result = await db.execute(select(DBUser).where(DBUser.username == request.admin_username))
-    if user_result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This username is already taken."
-        )
-    
-    print(f"DEBUG [saas/register]: Registering {request.tenant_name} with admin {request.admin_username}")
-    print(f"DEBUG [saas/register]: Password length: {len(request.admin_password)}")
+    try:
+        # 1. Check if tenant name already exists
+        result = await db.execute(select(DBTenant).where(DBTenant.name == request.tenant_name))
+        if result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A tenant with this name already exists."
+            )
+        
+        # 2. Check if username already exists
+        user_result = await db.execute(select(DBUser).where(DBUser.username == request.admin_username))
+        if user_result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This username is already taken."
+            )
+        
+        print(f"DEBUG [saas/register]: Registering {request.tenant_name} with admin {request.admin_username}")
+        print(f"DEBUG [saas/register]: Password length: {len(request.admin_password)}")
 
-    # 3. Create Tenant
-    tenant_id = str(uuid.uuid4())
-    api_key = f"sv_{secrets.token_urlsafe(32)}"
-    
-    new_tenant = DBTenant(
-        id=tenant_id,
-        name=request.tenant_name,
-        api_key=api_key
-    )
-    db.add(new_tenant)
-    await db.flush()
-    
-    # 4. Create Admin User
-    admin_pass = str(request.admin_password)
-    new_user = DBUser(
-        id=str(uuid.uuid4()),
-        tenant_id=tenant_id,
-        username=request.admin_username,
-        password_hash=get_password_hash(admin_pass),
-        roles=["admin", "soc_analyst"]
-    )
-    db.add(new_user)
-    
-    await db.commit()
-    await db.refresh(new_tenant)
-    
-    return TenantResponse(
-        tenant_id=new_tenant.id,
-        tenant_name=new_tenant.name,
-        api_key=new_tenant.api_key,
-        admin_username=new_user.username,
-        message="🚀 StealthVault AI environment successfully provisioned."
-    )
+        # 3. Create Tenant
+        tenant_id = str(uuid.uuid4())
+        api_key = f"sv_{secrets.token_urlsafe(32)}"
+        
+        new_tenant = DBTenant(
+            id=tenant_id,
+            name=request.tenant_name,
+            api_key=api_key
+        )
+        db.add(new_tenant)
+        await db.flush()
+        
+        # 4. Create Admin User
+        admin_pass = str(request.admin_password)
+        new_user = DBUser(
+            id=str(uuid.uuid4()),
+            tenant_id=tenant_id,
+            username=request.admin_username,
+            password_hash=get_password_hash(admin_pass),
+            roles=["admin", "soc_analyst"]
+        )
+        db.add(new_user)
+        
+        await db.commit()
+        await db.refresh(new_tenant)
+        
+        return TenantResponse(
+            tenant_id=new_tenant.id,
+            tenant_name=new_tenant.name,
+            api_key=new_tenant.api_key,
+            admin_username=new_user.username,
+            message="🚀 StealthVault AI environment successfully provisioned."
+        )
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"CRITICAL ERROR in saas/register: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"SaaS Provisioning failed: {str(e)}"
+        )
 
 from app.api.rbac import RoleChecker
 
@@ -108,33 +117,42 @@ async def add_tenant_user(
     Admins can invite new analysts or viewers to their tenant.
     All data remains strictly siloed within the tenant boundary.
     """
-    tenant_id = getattr(current_user, "tenant_id", None)
-    
-    # Check if username already exists globally
-    user_result = await db.execute(select(DBUser).where(DBUser.username == request.username))
-    if user_result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This username is already taken."
+    try:
+        tenant_id = getattr(current_user, "tenant_id", None)
+        
+        # Check if username already exists globally
+        user_result = await db.execute(select(DBUser).where(DBUser.username == request.username))
+        if user_result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This username is already taken."
+            )
+        
+        # Create User
+        new_user = DBUser(
+            id=str(uuid.uuid4()),
+            tenant_id=tenant_id,
+            username=request.username,
+            password_hash=get_password_hash(request.password),
+            roles=request.roles
         )
-    
-    # Create User
-    new_user = DBUser(
-        id=str(uuid.uuid4()),
-        tenant_id=tenant_id,
-        username=request.username,
-        password_hash=get_password_hash(request.password),
-        roles=request.roles
-    )
-    db.add(new_user)
-    await db.commit()
-    
-    return {
-        "id": new_user.id,
-        "username": new_user.username,
-        "roles": new_user.roles,
-        "message": f"Successfully added {request.username} to your SOC team."
-    }
+        db.add(new_user)
+        await db.commit()
+        
+        return {
+            "id": new_user.id,
+            "username": new_user.username,
+            "roles": new_user.roles,
+            "message": f"Successfully added {request.username} to your SOC team."
+        }
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"CRITICAL ERROR in add_tenant_user: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to add team member: {str(e)}"
+        )
 
 @router.get("/users", response_model=list)
 async def list_tenant_users(

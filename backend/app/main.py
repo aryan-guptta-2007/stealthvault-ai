@@ -21,11 +21,11 @@ from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
 from app.core.limiter import limiter
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse
+from app.core.batch_sqla import inspection_batcher, system_event_batcher
+
+# 🛡️ GLOBAL SYSTEM STRATEGY
+SYSTEM_TENANT_ID = "system-global"
+
 from app.core.logger import setup_logging, set_db_logger, logger
 from app.ai_engine.anomaly import anomaly_detector
 from app.ai_engine.classifier import attack_classifier
@@ -133,9 +133,9 @@ async def lifespan(app: FastAPI):
     print("  🤖 MULTI-AGENT SOC TEAM:")
     print("     Agent 1: DETECTOR  (Eyes)  — Active")
     print("     Agent 2: ANALYST   (Brain) — Active")
-    # For global startup logs, show the default tenant status
-    default_shadow = defender_agent.get_shadow_mode("default")
-    print(f"     Agent 3: DEFENDER  (Fist)  — {'SHADOW MODE ⚠️' if default_shadow else 'ARMED 🛡️'}")
+    # Using the system tenant context for global daemon status
+    system_shadow = defender_agent.get_shadow_mode(SYSTEM_TENANT_ID)
+    print(f"     Agent 3: DEFENDER  (Fist)  — {'SHADOW MODE ⚠️' if system_shadow else 'ARMED 🛡️'}")
     print()
     print("  👥 SAAS LAYER:        Multi-Tenant Enabled")
     print(f"  🌐 Server:    http://localhost:{settings.PORT}")
@@ -338,7 +338,7 @@ async def system_metrics_daemon():
                         level="CRITICAL",
                         component="Host",
                         message=alert_msg,
-                        tenant_id="default"
+                        tenant_id=SYSTEM_TENANT_ID
                     ))
                 
                 if queue_size > 40000:
@@ -348,7 +348,7 @@ async def system_metrics_daemon():
                         level="WARNING",
                         component="Queue",
                         message=alert_msg,
-                        tenant_id="default"
+                        tenant_id=SYSTEM_TENANT_ID
                     ))
                 
                 await db.commit()
@@ -572,7 +572,7 @@ def healthz():
 
 # WebSocket endpoint
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, token: str = None, tenant: str = "default"):
+async def websocket_endpoint(websocket: WebSocket, token: str = None, tenant: str = "global"):
     """Real-time alert feed via WebSocket."""
     tenant_id = tenant
     if token:
