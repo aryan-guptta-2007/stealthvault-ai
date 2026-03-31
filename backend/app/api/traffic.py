@@ -23,6 +23,13 @@ from app.ai_engine.classifier import attack_classifier
 from app.decision.risk_scorer import risk_scorer
 from app.decision.brain import security_brain
 from app.agents.orchestrator import soc_orchestrator
+from app.services.simulator import attack_simulator
+from app.api.auth import get_current_user, get_optional_user
+from pydantic import BaseModel
+
+class SimulationInput(BaseModel):
+    attack_type: str = "ddos" # ddos, brute_force, port_scan
+    intensity: str = "medium" # low, medium, high
 
 router = APIRouter(prefix="/traffic", tags=["Traffic Analysis"])
 
@@ -109,3 +116,17 @@ async def get_stats(request: Request):
         "anomaly_detector_trained": anomaly_detector.is_trained,
         "classifier_trained": attack_classifier.is_trained,
     }
+
+@router.post("/simulate")
+@limiter.limit("20/minute")
+async def simulate_attack(
+    request: Request,
+    sim: SimulationInput,
+    current_user: object = Depends(get_current_user)
+):
+    """
+    ⚔️ THE OFFENSIVE SUITE: Launch a simulated attack against the Alpha-Node.
+    Strictly for stress-testing and AI validation.
+    """
+    tenant_id = getattr(current_user, "tenant_id", "default")
+    return await attack_simulator.launch_attack(sim.attack_type, sim.intensity, tenant_id)

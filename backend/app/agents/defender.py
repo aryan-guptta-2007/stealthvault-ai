@@ -274,6 +274,16 @@ class DefenderAgent:
                 "reason": reason,
                 "auto": False,
             }
+            # 📉 PERSIST TO DB
+            self._persist_block_db(
+                ip=ip,
+                attack_type="MANUAL",
+                reason=reason,
+                risk_score=1.0,
+                confidence=1.0,
+                expires_at=time.time() + 315360000, # Permanent by default
+                tenant_id=tenant_id
+            )
             self._save_blocklist()
         
         return self._log_action(action, tenant_id)
@@ -397,45 +407,58 @@ class DefenderAgent:
             self._last_block_time[ip] = time.time()
             self._blocks_this_minute += 1
             self.total_blocks += 1
-            self.total_blocks += 1
             self._save_blocklist()
             await ip_reputation_engine.increment_block_count(ip, tenant_id)
 
             # 📉 PERSIST TO DB FOR AUDITING
-            try:
-                from app.database import AsyncSessionLocal
-                from app.models.db_models import DBBlockedIP
-                from sqlalchemy import select
-                
-                async def save_to_db():
-                    async with AsyncSessionLocal() as db:
-                        # Check if exists
-                        stmt = select(DBBlockedIP).where(
-                            DBBlockedIP.ip_address == ip,
-                            DBBlockedIP.tenant_id == tenant_id
+            self._persist_block_db(
+                ip=ip,
+                attack_type=attack_type,
+                reason=reason,
+                risk_score=intel.verdict.risk.score,
+                confidence=intel.verdict.combined_confidence,
+                expires_at=expires_at,
+                tenant_id=tenant_id
+            )
+
+        return self._log_action(action, tenant_id)
+
+    def _persist_block_db(self, ip: str, attack_type: str, reason: str, risk_score: float, confidence: float, expires_at: float, tenant_id: str):
+        """Asynchronously persist a block action to the database for dashboard visibility."""
+        try:
+            from app.database import AsyncSessionLocal
+            from app.models.db_models import DBBlockedIP
+            from sqlalchemy import select
+            import asyncio
+
+            async def save_to_db():
+                async with AsyncSessionLocal() as db:
+                    # Check if exists
+                    stmt = select(DBBlockedIP).where(
+                        DBBlockedIP.ip_address == ip,
+                        DBBlockedIP.tenant_id == tenant_id
+                    )
+                    res = await db.execute(stmt)
+                    db_block = res.scalars().first()
+                    
+                    if not db_block:
+                        db_block = DBBlockedIP(
+                            ip_address=ip,
+                            tenant_id=tenant_id
                         )
-                        res = await db.execute(stmt)
-                        db_block = res.scalars().first()
-                        
-                        if not db_block:
-                            db_block = DBBlockedIP(
-                                ip_address=ip,
-                                tenant_id=tenant_id
-                            )
-                            db.add(db_block)
-                        
-                        db_block.block_timestamp = datetime.utcnow()
-                        db_block.reason = reason
-                        db_block.expires_at = datetime.fromtimestamp(expires_at)
-                        db_block.risk_score = intel.verdict.risk.score
-                        db_block.confidence = intel.verdict.combined_confidence
-                        db_block.attack_type = attack_type
-                        await db.commit()
-                
-                import asyncio
-                asyncio.create_task(save_to_db())
-            except Exception as e:
-                print(f"   ⚠️ DB persistence failed for block: {e}")
+                        db.add(db_block)
+                    
+                    db_block.block_timestamp = datetime.utcnow()
+                    db_block.reason = reason
+                    db_block.expires_at = datetime.fromtimestamp(expires_at)
+                    db_block.risk_score = risk_score
+                    db_block.confidence = confidence
+                    db_block.attack_type = attack_type
+                    await db.commit()
+            
+            asyncio.create_task(save_to_db())
+        except Exception as e:
+            print(f"   ⚠️ DB persistence failed for block {ip}: {e}")
         
         return self._log_action(action, tenant_id)
     

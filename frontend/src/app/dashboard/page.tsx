@@ -6,6 +6,8 @@ import { API } from "@/lib/api";
 import { StatsCharts } from "@/components/dashboard/StatsCharts";
 import { BrainPanel } from "@/components/dashboard/BrainPanel";
 import AttackMap from "@/components/dashboard/AttackMap";
+import { OffensivePanel } from "@/components/dashboard/OffensivePanel";
+import { QuarantineTable } from "@/components/dashboard/QuarantineTable";
 import { Activity, Shield, AlertTriangle, Cpu, Terminal, LogOut, Server } from "lucide-react";
 
 interface BrainAnalysis {
@@ -251,6 +253,12 @@ export default function Dashboard() {
           {/* 🌍 GLOBAL THREAT MAP (FULL WIDTH) */}
           <div className="mb-10">
              <AttackMap alerts={rawAlerts} />
+          </div>
+
+          {/* ⚔️ OFFENSIVE + DEFENSIVE BATTLEGROUND */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
+             <OffensivePanel />
+             <QuarantineTable />
           </div>
 
           {/* ALERT BREAKDOWN & CHARTS */}
