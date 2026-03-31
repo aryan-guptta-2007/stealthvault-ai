@@ -3,7 +3,7 @@ import random
 from datetime import datetime
 from app.models.alert import NetworkPacket, Protocol
 from app.agents.orchestrator import soc_orchestrator
-from app.core.logger import log_event
+from app.database import log_event
 
 class SimulatorService:
     """

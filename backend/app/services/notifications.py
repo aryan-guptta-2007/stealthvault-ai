@@ -1,7 +1,7 @@
 import httpx
 import asyncio
 from app.config import settings
-from app.core.logger import log_event
+from app.database import log_event
 from app.models.alert import ThreatAlert, Severity
 
 class NotificationService:
