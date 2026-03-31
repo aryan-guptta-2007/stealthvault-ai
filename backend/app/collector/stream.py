@@ -5,6 +5,7 @@ Handles the flow: Capture → Queue → AI Analysis → Alert → Broadcast
 """
 
 import asyncio
+import os
 import time
 from datetime import datetime
 from collections import deque
