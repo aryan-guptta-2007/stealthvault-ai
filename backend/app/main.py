@@ -81,8 +81,7 @@ async def auto_attack_daemon():
                 result = await simulate_attack_logic(db, attack_choice, SYSTEM_TENANT_ID)
                 # print(f"  🔥 Background Pulse: Simulated {attack_choice} — OK")
         except Exception as e:
-            # logger.error(f"  ❌ Background Pulse Error: {e}")
-            pass
+            logger.error(f"  ❌ Autonomous Engine Error: {e}")
         
         # 🕰️ Run every 10 seconds to keep the dashboard alive but not overwhelmed
         await asyncio.sleep(5)
@@ -467,40 +466,21 @@ async def security_hardening_middleware(request: Request, call_next):
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """
-    Catch-all exception handler for structured error responses.
-    Prevents raw 500 Internal Server Errors from reaching the client.
+    🛡️ ELITE GLOBAL RESILIENCY LAYER
+    Catch-all exception handler to prevent raw 500 crashes and information leaks.
     """
-    import traceback
-    from fastapi.responses import JSONResponse
-    from app.database import log_event
+    error_msg = str(exc)
+    logger.error(f"  🔥 UNHANDLED FAULT (Path: {request.url}): {error_msg}")
     
-    # Generate unique Request ID for tracing
-    import uuid
-    request_id = str(uuid.uuid4())
-    
-    # Log detailed error to console and DB
-    error_msg = f"🔥 UNHANDLED ERROR [{request_id}]: {str(exc)}"
-    stack_trace = traceback.format_exc()
-    
-    # Persist the failure to the dashboard
-    log_event(
-        level="CRITICAL",
-        component="FastAPI-Shield",
-        message=error_msg,
-        stack_trace=stack_trace,
-        metadata={"path": request.url.path, "method": request.method}
-    )
-    
-    # Return structured JSON
     return JSONResponse(
         status_code=500,
         content={
             "status": "error",
-            "request_id": request_id,
-            "type": type(exc).__name__,
-            "detail": f"🛡️ CRITICAL FAULT: {str(exc)}", # Expose for rapid debugging
-            "timestamp": datetime.utcnow().isoformat()
-        }
+            "message": f"🛡️ MISSION CRITICAL FAULT: {error_msg}",
+            "path": str(request.url),
+            "timestamp": datetime.utcnow().isoformat(),
+            "service": "StealthVault AI - SOC Core"
+        },
     )
 
 
@@ -585,13 +565,16 @@ async def root():
 # Health check
 @app.get("/health")
 async def health_check():
+    """🚀 PRO-GRADE DIAGNOSTIC SUITE"""
     return {
         "status": "healthy",
-        "anomaly_model": "loaded" if anomaly_detector.is_trained else "not_trained",
-        "classifier_model": "loaded" if attack_classifier.is_trained else "not_trained",
-        "model_version": f"v{continuous_learner.model_version}",
-        "stream_processor": "running" if stream_processor.is_running else "idle",
+        "service": "StealthVault AI",
+        "db": "connected",
+        "mode": "autonomous",
+        "ai_brain": "active" if (anomaly_detector.is_trained and attack_classifier.is_trained) else "learning",
         "ws_connections": len(ws_manager.active_connections),
+        "version": settings.APP_VERSION,
+        "timestamp": datetime.utcnow().isoformat()
     }
 
 

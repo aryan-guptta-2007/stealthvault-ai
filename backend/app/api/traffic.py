@@ -201,7 +201,7 @@ async def simulate_attack_logic(db: AsyncSession, attack_type: str, tenant_id: s
 
 
 @router.post("/simulate")
-@limiter.limit("20/minute")
+@limiter.limit("5/minute")
 async def simulate_attack(
     request: Request,
     sim: SimulationInput,
