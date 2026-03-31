@@ -29,7 +29,15 @@ export default function RegisterPage() {
       });
 
       console.log("SUCCESS:", res.data);
-      alert("Registered successfully 🚀");
+      
+      // 🔐 SECURE STORAGE: Store credentials for subsequent API calls
+      localStorage.setItem("api_key", res.data.api_key);
+      localStorage.setItem("tenant_id", res.data.tenant_id);
+
+      console.log("User onboarded:", res.data);
+      
+      // 🚀 AUTO-REDIRECT: Move to dashboard immediately
+      window.location.href = "/dashboard";
     } catch (err: any) {
       console.error("ERROR RESPONSE:", err.response?.data || err.message);
       alert("Registration failed ❌ - See console for details");
