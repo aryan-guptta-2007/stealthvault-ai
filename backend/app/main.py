@@ -301,22 +301,17 @@ async def system_metrics_daemon():
             
             # 2. Sample App Metrics
             queue_size = 0
+            active_workers = 0
             if stream_processor.redis:
                 try:
                     queue_size = await stream_processor.redis.llen("packet_queue")
+                    worker_keys = await stream_processor.redis.keys("worker:heartbeat:*")
+                    active_workers = len(worker_keys)
                 except:
                     pass
             
             pps = stream_processor.get_stats().get("packets_per_second", 0)
             avg_lat = soc_orchestrator.avg_processing_ms
-            
-            active_workers = 0
-            if stream_processor.redis:
-                try:
-                    worker_keys = await stream_processor.redis.keys("worker:heartbeat:*")
-                    active_workers = len(worker_keys)
-                except:
-                    pass
             
             # 3. Persist to DB
             async with AsyncSessionLocal() as db:

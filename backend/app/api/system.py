@@ -88,8 +88,20 @@ async def get_system_metrics(user: dict = soc_access):
     stream_stats = stream_processor.get_stats()
     orch = soc_orchestrator
     
+    worker_registry = []
+    if stream_processor.redis:
+        try:
+            keys = await stream_processor.redis.keys("worker:heartbeat:*")
+            worker_registry = [
+                {
+                    "id": k.split(":")[-1],
+                    "status": "online",
+                } for k in keys
+            ]
+        except:
+            pass
+
     # 3. Calculate Health Score (0-100)
-    # Penalize for: No workers (-50), High DLQ (-1/packet), High Latency (-1 per 10ms over 100ms)
     health_score = 100
     if active_workers == 0: health_score -= 50
     health_score -= min(dl_size, 30)
@@ -124,12 +136,7 @@ async def get_system_metrics(user: dict = soc_access):
             "ram_percent": psutil.virtual_memory().percent if psutil else 0,
             "disk_percent": psutil.disk_usage('/').percent if psutil else 0,
         },
-        "worker_registry": [
-            {
-                "id": k.split(":")[-1],
-                "status": "online",
-            } for k in (await stream_processor.redis.keys("worker:heartbeat:*"))
-        ] if stream_processor.redis else [],
+        "worker_registry": worker_registry,
         "timestamp": time.time()
     }
 

@@ -46,18 +46,25 @@ async def run_worker():
         logger.info("Models loaded into worker memory.")
     except Exception as e:
         logger.critical(f"Failed to load AI models: {e}")
-        # If models can't load, worker is useless
         return
     
     backoff = 1
     max_backoff = 60
     
     while True:
+        r = None
         try:
-            r = redis.from_url("redis://localhost:6379/0", decode_responses=True)
-            await r.ping()
-            logger.info("Connected to Redis Queue.")
-            
+            # ⚡ Safe connection version
+            redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+            if redis_url and "none" not in redis_url.lower():
+                r = redis.from_url(redis_url, decode_responses=True)
+                await r.ping()
+                logger.info("Connected to Redis Queue.")
+            else:
+                logger.warning("Redis URL is not configured. Worker is in standby.")
+                await asyncio.sleep(10)
+                continue
+
             # Reset backoff on success
             backoff = 1
             
@@ -100,16 +107,15 @@ async def run_worker():
                             processed_count += 1
                         except Exception as e:
                             logger.error(f"Failed to process packet: {e}")
-                            # Push to Dead Letter Queue for auditing instead of silent drop
+                            # Push to Dead Letter Queue
                             await r.rpush("redis_dlq", packet_data)
                             
                     if processed_count > 0:
-                        # Use flush=True for real-time visibility in logs
                         logger.info(f"Processed {processed_count} packets from Redis.")
                         
                 except (redis.ConnectionError, redis.TimeoutError):
                     logger.warning("Redis connection lost during processing loop. Reconnecting...")
-                    break # Exit inner loop to reconnect
+                    break 
                 except Exception as e:
                     logger.error(f"Unexpected loop Error: {e}")
                     await asyncio.sleep(1)
@@ -124,6 +130,12 @@ async def run_worker():
         except Exception as e:
             logger.critical(f"Worker process encountered a fatal error: {e}")
             await asyncio.sleep(5)
+        finally:
+            if r:
+                try:
+                    await r.close()
+                except:
+                    pass
 
 if __name__ == "__main__":
     try:

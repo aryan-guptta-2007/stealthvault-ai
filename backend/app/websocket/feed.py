@@ -19,9 +19,17 @@ class WebSocketManager:
 
     def __init__(self):
         self.active_connections: dict[str, list[WebSocket]] = defaultdict(list)
+        self.redis = None
         try:
-            self.redis = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
-            # We don't ping here as it's async, but we'll handle it in the listener
+            # ⚡ Safe connection
+            import os
+            redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+            if redis_url and "none" not in redis_url.lower():
+                self.redis = redis.from_url(
+                    redis_url,
+                    decode_responses=True,
+                    socket_connect_timeout=2
+                )
         except Exception:
             self.redis = None
         self._listener_task = None

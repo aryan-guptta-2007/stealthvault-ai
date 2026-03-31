@@ -36,21 +36,23 @@ class StreamProcessor:
     """
 
     def __init__(self, redis_url: str = "redis://localhost:6379/0"):
-        # ⚡ Resilient Redis client settings
+        # ⚡ Safe Redis initialization
+        self.redis = None
+        self.redis_url = redis_url
         try:
-            self.redis = redis.from_url(
-                redis_url, 
-                decode_responses=True,
-                retry_on_timeout=True,
-                socket_keepalive=True,
-                health_check_interval=30,
-                socket_connect_timeout=2
-            )
+            if redis_url and "none" not in redis_url.lower():
+                self.redis = redis.from_url(
+                    redis_url, 
+                    decode_responses=True,
+                    retry_on_timeout=True,
+                    socket_keepalive=True,
+                    health_check_interval=30,
+                    socket_connect_timeout=2
+                )
         except Exception:
             self.redis = None
             
         self.is_running: bool = False
-        self.redis_url = redis_url
 
         # Statistics
         self.total_processed: int = 0
@@ -76,10 +78,11 @@ class StreamProcessor:
         """Start the stream processor connecting to Redis."""
         self.is_running = True
         self.start_time = time.time()
-        logger.info("⚡ Stream processor started (Redis Distributed Mode)")
+        logger.info("⚡ Stream processor started")
         
         # Start a listener for alerts coming from the separate AI Worker
         if self.redis:
+            logger.info("⚡ Stream Processor: Redis Distributed Mode Active")
             self.listener_task = asyncio.create_task(self._listen_for_alerts())
         else:
             logger.info("⚡ Stream Processor: Redis is offline. Running in Local-Only mode.")
@@ -90,7 +93,10 @@ class StreamProcessor:
         if self.listener_task:
             self.listener_task.cancel()
         if self.redis:
-            await self.redis.close()
+            try:
+                await self.redis.close()
+            except:
+                pass
         logger.info("⚡ Stream processor stopped")
 
     async def submit(self, packet: NetworkPacket):
@@ -149,7 +155,7 @@ class StreamProcessor:
                     self._alert_times.append(time.time())
             
         except Exception as e:
-            logger.error(f"Failed to submit to Redis: {e}")
+            logger.error(f"Failed to submit to Redis fallback: {e}")
 
     def _eval_priority(self, packet: NetworkPacket) -> int:
         """Heuristic to determine packet priority during congestion."""

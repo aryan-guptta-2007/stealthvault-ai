@@ -39,11 +39,17 @@ class IPReputationEngine:
     TTL_SECONDS = 60 * 60 * 24 * 7  # 7 Days Memory Decay
 
     def __init__(self):
+        self.redis = None
         try:
-            self.redis = redis.Redis(
-                host='localhost', port=6379, db=0, decode_responses=True,
-                socket_connect_timeout=2
-            )
+            # ⚡ Safe connection
+            import os
+            redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+            if redis_url and "none" not in redis_url.lower():
+                self.redis = redis.from_url(
+                    redis_url,
+                    decode_responses=True,
+                    socket_connect_timeout=2
+                )
         except Exception:
             self.redis = None
 
