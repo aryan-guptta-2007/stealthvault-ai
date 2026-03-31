@@ -66,6 +66,9 @@ def _db_alert_to_pydantic(db_alert: DBAlert, anonymize: bool = False) -> ThreatA
 async def get_alerts(
     request: Request,
     limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    sortBy: str = Query("timestamp", description="Field to sort by"),
+    order: str = Query("desc", regex="^(asc|desc)$", description="Sort order: asc or desc"),
     severity: str | None = Query(None, description="Filter by severity: low, medium, high, critical"),
     current_user: object | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db)
@@ -78,7 +81,12 @@ async def get_alerts(
     if severity:
         stmt = stmt.where(DBAlert.severity == severity.lower())
         
-    stmt = stmt.order_by(desc(DBAlert.timestamp)).limit(limit)
+    # Apply dynamic sorting and pagination
+    from sqlalchemy import asc
+    sort_attr = getattr(DBAlert, sortBy, DBAlert.timestamp)
+    stmt = stmt.order_by(desc(sort_attr) if order == "desc" else asc(sort_attr))
+    stmt = stmt.offset(offset).limit(limit)
+    
     result = await db.execute(stmt)
     db_alerts = result.scalars().all()
     pydantic_alerts = [_db_alert_to_pydantic(a, anonymize=is_public) for a in db_alerts]
@@ -92,6 +100,9 @@ async def get_alerts(
 async def get_critical_alerts(
     request: Request,
     limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    sortBy: str = Query("timestamp", description="Field to sort by"),
+    order: str = Query("desc", regex="^(asc|desc)$", description="Sort order: asc or desc"),
     current_user: object | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -102,7 +113,13 @@ async def get_critical_alerts(
     stmt = select(DBAlert).where(
         DBAlert.tenant_id == tenant_id,
         DBAlert.severity.in_(["critical", "high"])
-    ).order_by(desc(DBAlert.timestamp)).limit(limit)
+    )
+    
+    # Apply dynamic sorting and pagination
+    from sqlalchemy import asc
+    sort_attr = getattr(DBAlert, sortBy, DBAlert.timestamp)
+    stmt = stmt.order_by(desc(sort_attr) if order == "desc" else asc(sort_attr))
+    stmt = stmt.offset(offset).limit(limit)
     
     result = await db.execute(stmt)
     db_alerts = result.scalars().all()

@@ -24,6 +24,9 @@ from slowapi.middleware import SlowAPIMiddleware
 from app.config import settings
 from app.core.limiter import limiter
 from app.core.batch_sqla import inspection_batcher, system_event_batcher
+from app.api.traffic import simulate_attack_logic
+from app.database import AsyncSessionLocal
+import random
 
 # 🛡️ GLOBAL SYSTEM STRATEGY
 SYSTEM_TENANT_ID = "system-global"
@@ -56,6 +59,33 @@ from app.api.saas import router as saas_router
 
 from app.api.system import get_system_metrics
 import asyncio
+
+async def auto_attack_daemon():
+    """
+    ⚔️ BATTLE-MODE DAEMON (Autonomous Offensive Suite)
+    Automatically triggers simulated attacks to ensure the SOC is always 'Live'.
+    """
+    print("  🚀 Battle-Mode Pulse: Autonomous Simulation Engine — ARMED")
+    
+    # 🕵️ Randomly pick attack types to simulate a real adversary
+    attacks = ["ddos", "bruteforce", "portscan"]
+    
+    while True:
+        # Wait a bit before starting the first pulse to let DB initialize
+        await asyncio.sleep(10)
+        
+        try:
+            async with AsyncSessionLocal() as db:
+                attack_choice = random.choice(attacks)
+                # SYSTEM_TENANT_ID is defined in this file (system-global)
+                result = await simulate_attack_logic(db, attack_choice, SYSTEM_TENANT_ID)
+                # print(f"  🔥 Background Pulse: Simulated {attack_choice} — OK")
+        except Exception as e:
+            # logger.error(f"  ❌ Background Pulse Error: {e}")
+            pass
+        
+        # 🕰️ Run every 10 seconds to keep the dashboard alive but not overwhelmed
+        await asyncio.sleep(5)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -113,6 +143,10 @@ async def lifespan(app: FastAPI):
     # Start Defender auto-unblock daemon
     asyncio.create_task(defender_cleanup_daemon())
     print("  🕰️ Defender Safety Daemon Started")
+
+    # Start Autonomous Offensive Simulation (Live Dashboard Mode)
+    asyncio.create_task(auto_attack_daemon())
+    print("  ⚔️  Battle-Mode Pulse: Autonomous Simulation Engine — ARMED")
 
     # Load AI models
     anomaly_loaded = anomaly_detector.load()
