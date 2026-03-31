@@ -137,12 +137,15 @@ async def simulate_attack(
         id=str(uuid.uuid4()),
         tenant_id=tenant_id,
         timestamp=datetime.utcnow(),
-        src_ip="192.168.1.1",
-        dst_ip="10.0.0.1",
+        src_ip="192.168.1.100",
+        dst_ip="10.0.0.5",
         attack_type=sim.attack_type, # Using sim from function arg
         risk_score=0.9,
         severity="high",
-        packet_data={},
+        packet_data={
+            "src_ip": "192.168.1.100",
+            "dst_ip": "10.0.0.5"
+        },
         anomaly_data={},
         classification_data={},
         risk_data={},
