@@ -48,19 +48,19 @@ class NetworkPacket(BaseModel):
     🛡️ Hardened Network Packet Schema
     Enforces strict IP and Port validation to prevent injection.
     """
-    id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8])
+    id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8], min_length=8, max_length=8)
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     tenant_id: constr(min_length=1, max_length=50) = "default"
-    src_ip: IPvAnyAddress
-    dst_ip: IPvAnyAddress
-    src_port: conint(ge=0, le=65535) = 0
-    dst_port: conint(ge=0, le=65535) = 0
+    src_ip: IPvAnyAddress = Field(..., description="The source IP address of the packet")
+    dst_ip: IPvAnyAddress = Field(..., description="The destination IP address of the packet")
+    src_port: int = Field(0, ge=0, le=65535, description="Source port (0-65535)")
+    dst_port: int = Field(0, ge=0, le=65535, description="Destination port (0-65535)")
     protocol: Protocol = Protocol.TCP
-    packet_size: conint(ge=0) = 0
-    flags: constr(max_length=20) = ""
-    payload_size: conint(ge=0) = 0
-    ttl: conint(ge=0, le=255) = 64
-    duration: float = 0.0
+    packet_size: int = Field(0, ge=0, description="Total packet size in bytes")
+    flags: str = Field("", max_length=20, description="TCP flags (e.g., SYN, ACK)")
+    payload_size: int = Field(0, ge=0, description="Payload size in bytes")
+    ttl: int = Field(64, ge=0, le=255, description="Time to live (TTL)")
+    duration: float = Field(0.0, ge=0.0, description="Flow duration in seconds")
 
 
 class FeatureVector(BaseModel):
@@ -166,10 +166,26 @@ class DashboardStats(BaseModel):
     system_status: str = "ACTIVE"
 
 
+class SimulationInput(BaseModel):
+    """
+    ⚔️ Hardened Simulation Input
+    Strictly type-safe configuration for offensive security drills.
+    """
+    attack_type: str = Field(
+        "ddos", 
+        regex="^(ddos|bruteforce|portscan|malware|sqlinjection|xss)$", 
+        description="Type of attack to simulate"
+    )
+    intensity: str = Field(
+        "medium", 
+        regex="^(low|medium|high)$", 
+        description="Simulation traffic intensity"
+    )
+
 class RegisterInput(BaseModel):
     """SaaS Onboarding Input."""
-    tenant_name: str
-    username: str
-    password: str
+    tenant_name: str = Field(..., min_length=3, max_length=50)
+    username: str = Field(..., min_length=4, max_length=32)
+    password: str = Field(..., min_length=8)
     email: Optional[str] = None
-    plan: str = "FREE" # FREE, PRO, ENTERPRISE
+    plan: str = Field("FREE", regex="^(FREE|PRO|ENTERPRISE)$")

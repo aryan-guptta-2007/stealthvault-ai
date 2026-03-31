@@ -54,9 +54,9 @@ def setup_logging(level=logging.INFO):
     """
     Sets up the global logging configuration for StealthVault AI.
     """
-    # 1. Base Configuration
+    # 1. Base Configuration (Professional Structured Format)
     log_format = (
-        " [%(asctime)s] [%(levelname)s] [%(name)s]: %(message)s "
+        "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
     )
     
     # 2. Configure root logger

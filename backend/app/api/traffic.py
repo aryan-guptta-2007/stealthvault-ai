@@ -3,7 +3,7 @@ StealthVault AI - Traffic Analysis API
 Endpoints for analyzing network packets and retrieving traffic stats.
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Header
+from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
@@ -11,12 +11,12 @@ from app.models.db_models import DBTenant, DBAlert
 import uuid
 from datetime import datetime
 from app.core.limiter import limiter
-from fastapi import Request
 from app.models.alert import (
     NetworkPacket,
     ThreatAlert,
     DashboardStats,
     Severity,
+    SimulationInput,
 )
 from app.collector.extractor import extractor
 from app.ai_engine.anomaly import anomaly_detector
@@ -26,11 +26,6 @@ from app.decision.brain import security_brain
 from app.agents.orchestrator import soc_orchestrator
 from app.services.simulator import attack_simulator
 from app.api.auth import get_current_user, get_optional_user
-from pydantic import BaseModel
-
-class SimulationInput(BaseModel):
-    attack_type: str = "ddos" # ddos, brute_force, port_scan
-    intensity: str = "medium" # low, medium, high
 
 router = APIRouter(prefix="/traffic", tags=["Traffic Analysis"])
 

@@ -55,6 +55,7 @@ from app.api.soc import router as soc_router
 from app.api.system import router as system_router
 from app.api.defender import router as defender_router
 from app.api.saas import router as saas_router
+from app.api.stats import router as stats_router
 
 
 from app.api.system import get_system_metrics
@@ -514,6 +515,8 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
 app.middleware("http")(security_hardening_middleware)
 app.add_middleware(RequestSizeLimitMiddleware) 
 
+app.add_middleware(RequestSizeLimitMiddleware) 
+
 # Register API routers
 API_PREFIX = "/api/v1"
 app.include_router(auth_router, prefix=f"{API_PREFIX}/auth", tags=["Authentication"])
@@ -524,6 +527,7 @@ app.include_router(brain_router, prefix=API_PREFIX)
 app.include_router(capture_router, prefix=API_PREFIX)
 app.include_router(soc_router, prefix=API_PREFIX)
 app.include_router(system_router, prefix=API_PREFIX)
+app.include_router(stats_router, prefix=API_PREFIX)
 app.include_router(defender_router, prefix=f"{API_PREFIX}/defender")
 app.include_router(saas_router, prefix=API_PREFIX)
 
@@ -531,6 +535,23 @@ app.include_router(saas_router, prefix=API_PREFIX)
 FRONTEND_DIR = os.path.join(settings.BASE_DIR, "..", "frontend", "dist")
 if os.path.exists(FRONTEND_DIR):
     app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIR, "assets")), name="assets")
+
+
+@app.middleware("http")
+async def log_requests_middleware(request: Request, call_next):
+    """
+    📊 ELITE REQUEST AUDITING
+    Tracks every API heartbeat, status code, and millisecond latency.
+    """
+    import time
+    start_time = time.perf_counter()
+    
+    response = await call_next(request)
+    
+    duration = time.perf_counter() - start_time
+    logger.info(f"{request.method} {request.url.path} | HTTP {response.status_code} | {duration:.3f}s")
+    
+    return response
 
 
 # Root — serve dashboard or welcome
