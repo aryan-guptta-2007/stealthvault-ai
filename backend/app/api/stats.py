@@ -40,29 +40,35 @@ async def get_soc_stats(
         DBAlert.timestamp >= cutoff
     ).group_by(func.date_trunc('hour', DBAlert.timestamp)).order_by(func.date_trunc('hour', DBAlert.timestamp))
 
-    # Execute
-    res_severity = await db.execute(stmt_severity)
-    res_attackers = await db.execute(stmt_attackers)
-    res_trend = await db.execute(stmt_trend)
+    try:
+        # Execute
+        res_severity = await db.execute(stmt_severity)
+        res_attackers = await db.execute(stmt_attackers)
+        res_trend = await db.execute(stmt_trend)
 
-    # Format
-    severity_map = {"critical": 0, "high": 0, "medium": 0, "low": 0}
-    total_alerts = 0
-    for sev, count in res_severity.all():
-        severity_map[sev] = count
-        total_alerts += count
+        # Format
+        severity_map = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+        total_alerts = 0
+        for sev, count in res_severity.all():
+            severity_map[sev] = count
+            total_alerts += count
 
-    top_attackers = [{"ip": ip, "count": count} for ip, count in res_attackers.all()]
-    
-    trend_data = [{"time": t.isoformat(), "count": c} for t, c in res_trend.all()]
+        top_attackers = [{"ip": ip, "count": count} for ip, count in res_attackers.all()]
+        
+        trend_data = [{"time": t.isoformat(), "count": c} for t, c in res_trend.all()]
 
-    return {
-        "summary": {
-            "total_alerts": total_alerts,
-            "status": "ACTIVE",
-            "last_updated": datetime.utcnow().isoformat()
-        },
-        "severity_distribution": severity_map,
-        "top_attackers": top_attackers,
-        "hourly_trend_24h": trend_data
-    }
+        return {
+            "summary": {
+                "total_alerts": total_alerts,
+                "status": "ACTIVE",
+                "last_updated": datetime.utcnow().isoformat()
+            },
+            "severity_distribution": severity_map,
+            "top_attackers": top_attackers,
+            "hourly_trend_24h": trend_data
+        }
+    except Exception as e:
+        from fastapi import HTTPException
+        import logging
+        logging.error(f"Tactical Telemetry Fault: {e}")
+        raise HTTPException(status_code=500, detail="Tactical analytics engine currently unavailable.")

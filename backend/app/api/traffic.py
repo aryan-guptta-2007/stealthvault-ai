@@ -187,9 +187,15 @@ async def simulate_attack_logic(db: AsyncSession, attack_type: str, tenant_id: s
         geo_data={}
     )
 
-    db.add(new_alert)
-    await db.commit()
-    await db.refresh(new_alert)
+    try:
+        db.add(new_alert)
+        # 🔐 Transaction Safe Commit
+        await db.commit()
+        await db.refresh(new_alert)
+    except Exception as e:
+        # 🧹 Emergency Rollback on fault
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Simulation Persistence Fault: {str(e)}")
 
     # Trigger the real simulator service for network-level behavior
     return await attack_simulator.launch_attack(attack_type, "high", tenant_id)

@@ -79,10 +79,16 @@ async def auto_attack_daemon():
             async with AsyncSessionLocal() as db:
                 attack_choice = random.choice(attacks)
                 # SYSTEM_TENANT_ID is defined in this file (system-global)
-                result = await simulate_attack_logic(db, attack_choice, SYSTEM_TENANT_ID)
-                # print(f"  🔥 Background Pulse: Simulated {attack_choice} — OK")
+                try:
+                    await simulate_attack_logic(db, attack_choice, SYSTEM_TENANT_ID)
+                    # 🔐 Explicitly Commit
+                    await db.commit()
+                except Exception as e:
+                    # 🧹 Safety Rollback
+                    await db.rollback()
+                    logger.error(f"  🔥 Simulation Transaction Fault: {e}")
         except Exception as e:
-            logger.error(f"  ❌ Autonomous Engine Error: {e}")
+            logger.error(f"  ❌ Autonomous Engine Connection Error: {e}")
         
         # 🕰️ Run every 10 seconds to keep the dashboard alive but not overwhelmed
         await asyncio.sleep(5)
@@ -215,11 +221,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# --- 🛡️ PRODUCTION CORS CONFIGURATION ---
+cors_origins = settings.ALLOWED_ORIGINS if hasattr(settings, 'ALLOWED_ORIGINS') else ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -382,10 +390,15 @@ async def system_metrics_daemon():
                         tenant_id=SYSTEM_TENANT_ID
                     ))
                 
-                await db.commit()
+                try:
+                    # 🔐 Mission-Critical Commit
+                    await db.commit()
+                except Exception as commit_err:
+                    await db.rollback()
+                    logger.error(f"Metrics Persistence Fault: {commit_err}")
                 
         except Exception as e:
-            logger.error(f"Metrics Daemon Error: {e}")
+            logger.error(f"Metrics Daemon Logic Fault: {e}")
             
         await asyncio.sleep(60)
 
@@ -621,10 +634,19 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None, tenant: st
 
     await ws_manager.connect(websocket, tenant_id)
     try:
+        # 🔔 Send confirmation handshake
+        await websocket.send_json({"type": "WEL_COME", "status": "SESSION_ESTABLISHED", "timestamp": datetime.utcnow().isoformat()})
+        
         while True:
-            data = await websocket.receive_text()
-            await websocket.send_json({"type": "PONG", "data": data})
-    except WebSocketDisconnect:
+            # 🕰️ Receive pulse from client to keep session alive
+            try:
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+                await websocket.send_json({"type": "PONG", "data": data})
+            except asyncio.TimeoutError:
+                # 📡 Periodic Ping-Pong logic
+                await websocket.send_json({"type": "PING", "time": datetime.utcnow().timestamp()})
+    except (WebSocketDisconnect, Exception) as e:
+        # 🧹 Forensic cleanup: Close link if client disappears or heartbeats fail
         ws_manager.disconnect(websocket, tenant_id)
 
 if __name__ == "__main__":

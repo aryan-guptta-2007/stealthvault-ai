@@ -68,19 +68,22 @@ class WebSocketManager:
             await pubsub.punsubscribe()
 
     async def _broadcast_raw(self, message: str, tenant_id: str):
-        """Internal helper to broadcast raw string data to local connections for a tenant."""
+        """
+        🛡️ MISSION CRITICAL BROADCAST
+        Delivers real-time intelligence to all local SOC connections for a specific tenant.
+        Instantly prunes dead links to prevent memory exhaustion.
+        """
         if not self.active_connections.get(tenant_id):
             return
             
-        disconnected = []
-        for connection in self.active_connections[tenant_id]:
+        conns = self.active_connections[tenant_id][:] # Thread-safe snapshot
+        for connection in conns:
             try:
+                # ⚡ High-speed delivery
                 await connection.send_text(message)
             except Exception:
-                disconnected.append(connection)
-                
-        for dead_conn in disconnected:
-            self.disconnect(dead_conn, tenant_id)
+                # 🧹 Instant cleanup of dead/stale connections
+                self.disconnect(connection, tenant_id)
 
     async def publish_alert_globally(self, alert: ThreatAlert, tenant_id: str = "default"):
         """
