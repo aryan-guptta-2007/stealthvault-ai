@@ -10,7 +10,7 @@ import joblib
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.preprocessing import StandardScaler, LabelEncoder
-from app.models.alert import ClassificationResult, AttackType
+from app.models.alert import ClassificationResult, AttackType, NetworkPacket
 from app.config import settings
 
 CONFIDENCE_THRESHOLD = 0.65
@@ -93,6 +93,44 @@ class AttackClassifier:
                 if imp > 0.05
             },
         }
+
+    def rule_based_classify(self, packet: NetworkPacket) -> ClassificationResult:
+        """
+        🚀 REAL RULE-BASED CLASSIFICATION (Phase 4 Hardening)
+        Deterministic mapping of common network attack signatures.
+        """
+        if packet.dst_port == 22:
+            return ClassificationResult(
+                attack_type=AttackType.BRUTE_FORCE,
+                confidence=0.9,
+                explanation="SSH Targeted Activity Detected (Port 22)"
+            )
+        elif packet.packet_size > 3000:
+            return ClassificationResult(
+                attack_type=AttackType.DDOS,
+                confidence=0.85,
+                explanation="Volumetric Spike (DDoS Signature)"
+            )
+        elif packet.ttl < 20:
+            return ClassificationResult(
+                attack_type=AttackType.SQL_INJECTION if packet.packet_size > 1500 else AttackType.XSS, # Generic Fallback 
+                confidence=0.75,
+                explanation="Suspicious TTL / Signature Deviation"
+            )
+        
+        # Specific user requested logic for Spoofing (not in our Enum yet)
+        if hasattr(AttackType, "SPOOFING") or packet.ttl < 20:
+             return ClassificationResult(
+                attack_type=AttackType.UNKNOWN,
+                confidence=0.7,
+                explanation="Network Spoofing Signature Detected (Low TTL)"
+            )
+
+        return ClassificationResult(
+            attack_type=AttackType.NORMAL,
+            confidence=0.1,
+            explanation="Traffic aligned with normal protocols"
+        )
 
     def predict(self, features: np.ndarray) -> ClassificationResult:
         """

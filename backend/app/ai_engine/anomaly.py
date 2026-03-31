@@ -9,7 +9,7 @@ import os
 import joblib
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
-from app.models.alert import AnomalyResult
+from app.models.alert import AnomalyResult, NetworkPacket
 from app.config import settings
 
 
@@ -71,6 +71,43 @@ class AnomalyDetector:
             "avg_score": float(np.mean(scores)),
             "std_score": float(np.std(scores)),
         }
+
+    def rule_based_predict(self, packet: NetworkPacket) -> AnomalyResult:
+        """
+        🚀 REAL RULE-BASED DETECTION (Phase 4 Hardening)
+        Deterministic fallback for identifying common attack signatures.
+        """
+        score = 0.0
+        explanations = []
+
+        # 🚨 Rule 1: Large packet
+        if packet.packet_size > 2000:
+            score += 0.4
+            explanations.append("High Volume Packet (>2k)")
+
+        # 🚨 Rule 2: Suspicious port (SSH brute force)
+        if packet.dst_port == 22:
+            score += 0.3
+            explanations.append("Sensitive Port Access (SSH)")
+
+        # 🚨 Rule 3: Low TTL (possible spoofing)
+        if packet.ttl < 20:
+            score += 0.2
+            explanations.append("Suspiciously Low TTL")
+
+        # 🚨 Rule 4: High payload
+        if packet.payload_size > 1000:
+            score += 0.3
+            explanations.append("Abnormal Payload Density")
+
+        is_anomaly = score > 0.5
+
+        return AnomalyResult(
+            is_anomaly=is_anomaly,
+            anomaly_score=round(min(score, 1.0), 2),
+            confidence=0.8 if is_anomaly else 0.3,
+            explanation=" | ".join(explanations) if is_anomaly else "Normal traffic flow"
+        )
 
     def predict(self, features: np.ndarray) -> AnomalyResult:
         """

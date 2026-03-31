@@ -129,11 +129,22 @@ class DetectorAgent:
             features = extractor.extract(packet)
             feature_array = extractor.to_numpy(features)
             
-            # Step 2: Anomaly detection
-            anomaly = anomaly_detector.predict(feature_array)
+            # 🔥 Step 2: Rule-Based Detection (Phase 4 REAL Logic)
+            anomaly = anomaly_detector.rule_based_predict(packet)
+            classification = attack_classifier.rule_based_classify(packet)
             
-            # Step 3: Attack classification
-            classification = attack_classifier.predict(feature_array)
+            # Step 3: ML fallback/secondary signals
+            ml_anomaly = anomaly_detector.predict(feature_array)
+            ml_classification = attack_classifier.predict(feature_array)
+            
+            # Merge explainability from ML if it exists
+            if ml_anomaly.is_anomaly and not anomaly.is_anomaly:
+                anomaly.explanation = f"{anomaly.explanation} | ML-Detected Anomaly"
+            
+            if ml_classification.attack_type != AttackType.NORMAL and classification.attack_type == AttackType.NORMAL:
+                classification.attack_type = ml_classification.attack_type
+                classification.confidence = ml_classification.confidence
+                classification.explanation = f"{classification.explanation} | ML-Classified: {ml_classification.attack_type.value}"
         except Exception as e:
             log_event("ERROR", "DetectorAgent", f"Inspection failed for {packet.src_ip}: {e}", stack_trace=str(e))
             # Safe fallback: Treat as normal but log the failure
