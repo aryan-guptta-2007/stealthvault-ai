@@ -7,7 +7,8 @@ from fastapi import APIRouter, HTTPException, Depends, Header
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
-from app.models.db_models import DBTenant
+from app.models.db_models import DBTenant, DBAlert
+import uuid
 from datetime import datetime
 from app.core.limiter import limiter
 from fastapi import Request
@@ -122,6 +123,7 @@ async def get_stats(request: Request):
 async def simulate_attack(
     request: Request,
     sim: SimulationInput,
+    db: AsyncSession = Depends(get_db),
     current_user: object = Depends(get_current_user)
 ):
     """
@@ -129,4 +131,28 @@ async def simulate_attack(
     Strictly for stress-testing and AI validation.
     """
     tenant_id = getattr(current_user, "tenant_id", "default")
+    
+    # 📉 PERSIST SIMULATED ALERT TO DB
+    new_alert = DBAlert(
+        id=str(uuid.uuid4()),
+        tenant_id=tenant_id,
+        timestamp=datetime.utcnow(),
+        src_ip="192.168.1.1",
+        dst_ip="10.0.0.1",
+        attack_type=sim.attack_type, # Using sim from function arg
+        risk_score=0.9,
+        severity="high",
+        packet_data={},
+        anomaly_data={},
+        classification_data={},
+        risk_data={},
+        brain_analysis={},
+        feedback_label="auto",
+        is_correct=True,
+        geo_data={}
+    )
+
+    db.add(new_alert)
+    await db.commit()
+
     return await attack_simulator.launch_attack(sim.attack_type, sim.intensity, tenant_id)
