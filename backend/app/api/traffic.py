@@ -133,16 +133,13 @@ async def simulate_attack(
     tenant_id = getattr(current_user, "tenant_id", "default")
     
     # 📉 MAP SIMULATION TYPE TO PRODUCTION ENUM
-    attack_map = {
+    attack_type_map = {
         "ddos": "DDoS",
-        "portscan": "PortScan",
         "bruteforce": "BruteForce",
-        "malware": "Malware",
-        "sqlinjection": "SQLInjection",
-        "xss": "XSS"
+        "portscan": "PortScan"
     }
     
-    verdict = attack_map.get(sim.attack_type.lower(), "Unknown")
+    fixed_attack_type = attack_type_map.get(sim.attack_type.lower(), "Normal")
     
     # 📉 PERSIST SIMULATED ALERT TO DB
     new_alert = DBAlert(
@@ -151,7 +148,7 @@ async def simulate_attack(
         timestamp=datetime.utcnow(),
         src_ip="192.168.1.100",
         dst_ip="10.0.0.5",
-        attack_type=verdict,
+        attack_type=fixed_attack_type,
         risk_score=0.9,
         severity="high",
         packet_data={
@@ -164,7 +161,7 @@ async def simulate_attack(
             "confidence": 0.92
         },
         classification_data={
-            "attack_type": verdict,
+            "attack_type": fixed_attack_type,
             "confidence": 0.95
         },
         risk_data={},
@@ -176,5 +173,8 @@ async def simulate_attack(
 
     db.add(new_alert)
     await db.commit()
+    await db.refresh(new_alert)
+
+    print(f"✅ ALERT INSERTED: {new_alert.id}")
 
     return await attack_simulator.launch_attack(sim.attack_type, sim.intensity, tenant_id)
