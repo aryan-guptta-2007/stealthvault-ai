@@ -81,8 +81,11 @@ async def get_alerts(
     stmt = stmt.order_by(desc(DBAlert.timestamp)).limit(limit)
     result = await db.execute(stmt)
     db_alerts = result.scalars().all()
+    pydantic_alerts = [_db_alert_to_pydantic(a, anonymize=is_public) for a in db_alerts]
     
-    return [_db_alert_to_pydantic(a, anonymize=is_public) for a in db_alerts]
+    # 🛡️ SAFE CONVERSION SAFEGUARD
+    valid_types = {"Normal", "DDoS", "PortScan", "BruteForce", "Malware", "SQLInjection", "XSS", "Unknown"}
+    return [a for a in pydantic_alerts if a.attack_type in valid_types]
 
 @router.get("/critical", response_model=list[ThreatAlert])
 @limiter.limit("60/minute")
@@ -102,7 +105,12 @@ async def get_critical_alerts(
     ).order_by(desc(DBAlert.timestamp)).limit(limit)
     
     result = await db.execute(stmt)
-    return [_db_alert_to_pydantic(a, anonymize=is_public) for a in result.scalars().all()]
+    db_alerts = result.scalars().all()
+    pydantic_alerts = [_db_alert_to_pydantic(a, anonymize=is_public) for a in db_alerts]
+    
+    # 🛡️ SAFE CONVERSION SAFEGUARD
+    valid_types = {"Normal", "DDoS", "PortScan", "BruteForce", "Malware", "SQLInjection", "XSS", "Unknown"}
+    return [a for a in pydantic_alerts if a.attack_type in valid_types]
 
 
 @router.get("/count")
