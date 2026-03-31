@@ -360,7 +360,7 @@ class AttackStoryEngine:
         defense_action = defenses[-1] if defenses else "Monitoring — no action taken yet"
         
         return AttackStory(
-            story_id=f"story_{tenant_id}_{src_ip.replace('.', '_')}_{int(events[0]['timestamp'])}",
+            story_id=f"story_{tenant_id}_{str(src_ip).replace('.', '_')}_{int(events[0]['timestamp'])}",
             attacker_ip=src_ip,
             target_ip=dst_ip,
             phases=phases,

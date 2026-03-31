@@ -458,7 +458,7 @@ class DefenderAgent:
             
         try:
             if sys.platform == "win32":
-                rule_name = f"StealthVault_Block_{ip.replace('.', '_')}"
+                rule_name = f"StealthVault_Block_{str(ip).replace('.', '_')}"
                 # Check if it already exists to avoid errors on duplicate netsh commands
                 cmd = f'netsh advfirewall firewall show rule name="{rule_name}"'
                 check = subprocess.run(cmd, shell=True, capture_output=True, text=True)
@@ -486,7 +486,7 @@ class DefenderAgent:
             
         try:
             if sys.platform == "win32":
-                rule_name = f"StealthVault_Block_{ip.replace('.', '_')}"
+                rule_name = f"StealthVault_Block_{str(ip).replace('.', '_')}"
                 cmd = f'netsh advfirewall firewall delete rule name="{rule_name}"'
                 result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=10)
                 return result.returncode == 0
