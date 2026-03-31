@@ -46,6 +46,7 @@ def _db_alert_to_pydantic(db_alert: DBAlert, anonymize: bool = False) -> ThreatA
     return ThreatAlert(
         id=db_alert.id,
         timestamp=db_alert.timestamp,
+        attack_type=db_alert.attack_type,
         packet=packet,
         anomaly=AnomalyResult(**db_alert.anomaly_data),
         classification=ClassificationResult(**db_alert.classification_data),
@@ -56,7 +57,6 @@ def _db_alert_to_pydantic(db_alert: DBAlert, anonymize: bool = False) -> ThreatA
             "classification_contribution": 0.0,
             "behavior_flags": []
         })),
-        risk_data=verdict.detection.risk.model_dump(mode="json"),
         brain_analysis=brain,
         geo_location=GeoLocation(**db_alert.geo_data) if db_alert.geo_data else GeoLocation()
     )

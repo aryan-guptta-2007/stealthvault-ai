@@ -137,6 +137,7 @@ class ThreatAlert(BaseModel):
     """Complete threat alert combining all analysis."""
     id: str = Field(default_factory=lambda: str(uuid.uuid4())[:12])
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+    attack_type: str = "Unknown"
     packet: NetworkPacket
     anomaly: AnomalyResult
     classification: ClassificationResult
