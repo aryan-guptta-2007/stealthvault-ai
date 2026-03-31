@@ -132,6 +132,18 @@ async def simulate_attack(
     """
     tenant_id = getattr(current_user, "tenant_id", "default")
     
+    # 📉 MAP SIMULATION TYPE TO PRODUCTION ENUM
+    attack_map = {
+        "ddos": "DDoS",
+        "portscan": "PortScan",
+        "bruteforce": "BruteForce",
+        "malware": "Malware",
+        "sqlinjection": "SQLInjection",
+        "xss": "XSS"
+    }
+    
+    fixed_attack_type = attack_map.get(sim.attack_type.lower(), "Unknown")
+    
     # 📉 PERSIST SIMULATED ALERT TO DB
     new_alert = DBAlert(
         id=str(uuid.uuid4()),
@@ -139,7 +151,7 @@ async def simulate_attack(
         timestamp=datetime.utcnow(),
         src_ip="192.168.1.100",
         dst_ip="10.0.0.5",
-        attack_type=sim.attack_type, # Using sim from function arg
+        attack_type=fixed_attack_type,
         risk_score=0.9,
         severity="high",
         packet_data={
@@ -152,7 +164,7 @@ async def simulate_attack(
             "confidence": 0.92
         },
         classification_data={
-            "attack_type": sim.attack_type,
+            "attack_type": fixed_attack_type,
             "confidence": 0.95
         },
         risk_data={},
