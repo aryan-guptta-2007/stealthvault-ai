@@ -151,7 +151,10 @@ async def simulate_attack(
             "anomaly_score": 0.87,
             "confidence": 0.92
         },
-        classification_data={},
+        classification_data={
+            "attack_type": sim.attack_type,
+            "confidence": 0.95
+        },
         risk_data={},
         brain_analysis={},
         feedback_label="auto",
