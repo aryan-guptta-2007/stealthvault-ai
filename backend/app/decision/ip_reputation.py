@@ -43,14 +43,17 @@ class IPReputationEngine:
         try:
             # ⚡ Safe connection
             import os
-            redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-            if redis_url and "none" not in redis_url.lower():
+            redis_url = os.getenv("REDIS_URL")
+            if redis_url:
                 self.redis = redis.from_url(
                     redis_url,
                     decode_responses=True,
                     socket_connect_timeout=2
                 )
-        except Exception:
+            else:
+                print("⚠️ Redis not configured, running without it")
+        except Exception as e:
+            print(f"Redis error: {e}")
             self.redis = None
 
     def _get_key(self, ip: str, tenant_id: str = "default") -> str:

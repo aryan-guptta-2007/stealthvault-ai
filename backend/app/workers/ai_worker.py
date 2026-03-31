@@ -55,13 +55,13 @@ async def run_worker():
         r = None
         try:
             # ⚡ Safe connection version
-            redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-            if redis_url and "none" not in redis_url.lower():
+            redis_url = os.getenv("REDIS_URL")
+            if redis_url:
                 r = redis.from_url(redis_url, decode_responses=True)
                 await r.ping()
                 logger.info("Connected to Redis Queue.")
             else:
-                logger.warning("Redis URL is not configured. Worker is in standby.")
+                logger.warning("⚠️ Redis not configured. Worker is in standby.")
                 await asyncio.sleep(10)
                 continue
 

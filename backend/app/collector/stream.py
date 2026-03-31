@@ -35,21 +35,25 @@ class StreamProcessor:
         - Auto-broadcasts alerts via WebSocket
     """
 
-    def __init__(self, redis_url: str = "redis://localhost:6379/0"):
+    def __init__(self, redis_url: Optional[str] = None):
         # ⚡ Safe Redis initialization
         self.redis = None
-        self.redis_url = redis_url
+        self.redis_url = redis_url if redis_url else os.getenv("REDIS_URL")
+        
         try:
-            if redis_url and "none" not in redis_url.lower():
+            if self.redis_url:
                 self.redis = redis.from_url(
-                    redis_url, 
+                    self.redis_url, 
                     decode_responses=True,
                     retry_on_timeout=True,
                     socket_keepalive=True,
                     health_check_interval=30,
                     socket_connect_timeout=2
                 )
-        except Exception:
+            else:
+                logger.warning("⚠️ Redis not configured, running in Local-Only mode.")
+        except Exception as e:
+            logger.error(f"Redis error: {e}")
             self.redis = None
             
         self.is_running: bool = False

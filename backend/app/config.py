@@ -20,7 +20,7 @@ class Settings(BaseSettings):
 
     # Persistence & Messaging
     DATABASE_URL: str = "postgresql+asyncpg://stealthadmin:stealthpassword@localhost:5432/stealthvault"
-    REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_URL: Optional[str] = None
 
     # CORS
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]

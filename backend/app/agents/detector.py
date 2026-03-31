@@ -96,14 +96,17 @@ class DetectorAgent:
         self.redis = None
         try:
             import os
-            redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-            if redis_url and "none" not in redis_url.lower():
+            redis_url = os.getenv("REDIS_URL")
+            if redis_url:
                 self.redis = redis.from_url(
                     redis_url, 
                     decode_responses=True,
                     socket_connect_timeout=2
                 )
-        except Exception:
+            else:
+                logger.warning("⚠️ Redis not configured, running without it")
+        except Exception as e:
+            logger.error(f"Redis error: {e}")
             self.redis = None
     
     def _ensure_models_loaded(self):
