@@ -146,7 +146,11 @@ async def simulate_attack(
             "src_ip": "192.168.1.100",
             "dst_ip": "10.0.0.5"
         },
-        anomaly_data={},
+        anomaly_data={
+            "is_anomaly": True,
+            "anomaly_score": 0.87,
+            "confidence": 0.92
+        },
         classification_data={},
         risk_data={},
         brain_analysis={},
