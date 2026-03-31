@@ -68,7 +68,7 @@ async def get_alerts(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     sortBy: str = Query("timestamp", description="Field to sort by"),
-    order: str = Query("desc", regex="^(asc|desc)$", description="Sort order: asc or desc"),
+    order: str = Query("desc", pattern="^(asc|desc)$", description="Sort order: asc or desc"),
     severity: str | None = Query(None, description="Filter by severity: low, medium, high, critical"),
     current_user: object | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db)
@@ -102,7 +102,7 @@ async def get_critical_alerts(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     sortBy: str = Query("timestamp", description="Field to sort by"),
-    order: str = Query("desc", regex="^(asc|desc)$", description="Sort order: asc or desc"),
+    order: str = Query("desc", pattern="^(asc|desc)$", description="Sort order: asc or desc"),
     current_user: object | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db)
 ):

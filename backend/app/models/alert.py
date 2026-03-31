@@ -173,12 +173,12 @@ class SimulationInput(BaseModel):
     """
     attack_type: str = Field(
         "ddos", 
-        regex="^(ddos|bruteforce|portscan|malware|sqlinjection|xss)$", 
+        pattern="^(ddos|bruteforce|portscan|malware|sqlinjection|xss)$", 
         description="Type of attack to simulate"
     )
     intensity: str = Field(
         "medium", 
-        regex="^(low|medium|high)$", 
+        pattern="^(low|medium|high)$", 
         description="Simulation traffic intensity"
     )
 
@@ -188,4 +188,4 @@ class RegisterInput(BaseModel):
     username: str = Field(..., min_length=4, max_length=32)
     password: str = Field(..., min_length=8)
     email: Optional[str] = None
-    plan: str = Field("FREE", regex="^(FREE|PRO|ENTERPRISE)$")
+    plan: str = Field("FREE", pattern="^(FREE|PRO|ENTERPRISE)$")
