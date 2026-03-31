@@ -27,6 +27,7 @@ from app.models.alert import (
     RiskScore,
     AttackType,
     Severity,
+    GeoLocation,
 )
 from app.database import log_event
 from app.collector.extractor import extractor
@@ -35,6 +36,7 @@ from app.ai_engine.classifier import attack_classifier
 from app.decision.risk_scorer import risk_scorer
 from app.decision.ip_reputation import ip_reputation_engine
 from app.ai_engine.learner import continuous_learner
+from app.services.geoip import geoip_resolver
 from app.core.logger import logger
 
 
@@ -54,6 +56,7 @@ class DetectionVerdict:
     
     # 🛡️ Defender Safety Lock
     is_repeat_offender: bool = False
+    geo_location: Optional[GeoLocation] = None
     
     @property
     def is_threat(self) -> bool:
@@ -277,6 +280,9 @@ class DetectorAgent:
             is_anomaly=anomaly.is_anomaly
         )
             
+        # 🌍 GEO ENRICHMENT
+        location = geoip_resolver.resolve(src_ip)
+
         verdict = DetectionVerdict(
             packet=packet,
             features=feature_array,
@@ -286,6 +292,7 @@ class DetectorAgent:
             signal_count=signal_count,
             combined_confidence=round(combined_confidence, 4),
             is_repeat_offender=(ip_profile["total_threats"] >= 2),
+            geo_location=location,
         )
         
         if verdict.is_threat:

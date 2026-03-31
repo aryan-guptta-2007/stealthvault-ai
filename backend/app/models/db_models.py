@@ -63,6 +63,7 @@ class DBAlert(Base):
     classification_data = Column(JSON)
     risk_data = Column(JSON)
     brain_analysis = Column(JSON, nullable=True)
+    geo_data = Column(JSON, nullable=True)
     
     # 📉 Monitoring & Feedback
     feedback_label = Column(String(50), nullable=True) # Actual label from analyst

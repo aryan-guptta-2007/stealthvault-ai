@@ -118,7 +118,8 @@ async def persist_soc_results(verdict, story=None, retries: int = 3):
                         anomaly_data=verdict.detection.anomaly.model_dump(mode="json"),
                         classification_data=verdict.detection.classification.model_dump(mode="json"),
                         risk_data=verdict.detection.risk.model_dump(mode="json"),
-                        brain_analysis=verdict.intelligence.brain_analysis.model_dump(mode="json") if verdict.intelligence and verdict.intelligence.brain_analysis else None
+                        brain_analysis=verdict.intelligence.brain_analysis.model_dump(mode="json") if verdict.intelligence and verdict.intelligence.brain_analysis else None,
+                        geo_data=verdict.detection.geo_location.model_dump(mode="json") if verdict.detection.geo_location else None
                     )
                     db.add(db_alert)
                 

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { API } from "@/lib/api";
 import { StatsCharts } from "@/components/dashboard/StatsCharts";
 import { BrainPanel } from "@/components/dashboard/BrainPanel";
+import AttackMap from "@/components/dashboard/AttackMap";
 import { Activity, Shield, AlertTriangle, Cpu, Terminal, LogOut, Server } from "lucide-react";
 
 interface BrainAnalysis {
@@ -24,6 +25,7 @@ interface AlertData {
   anomaly: any;
   classification: any;
   risk: any;
+  geo_location: any;
 }
 
 export default function Dashboard() {
@@ -228,6 +230,11 @@ export default function Dashboard() {
                     </div>
                 </div>
              ))}
+          </div>
+
+          {/* 🌍 GLOBAL THREAT MAP (FULL WIDTH) */}
+          <div className="mb-10">
+             <AttackMap alerts={rawAlerts} />
           </div>
 
           {/* ALERT BREAKDOWN & CHARTS */}

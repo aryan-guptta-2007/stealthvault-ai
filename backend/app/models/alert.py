@@ -124,6 +124,15 @@ class BrainAnalysis(BaseModel):
     recommended_actions: list[str] = []
 
 
+class GeoLocation(BaseModel):
+    """Geographic information for an IP address."""
+    city: str = "Unknown"
+    country: str = "Unknown"
+    country_code: str = "XX"
+    latitude: float = 0.0
+    longitude: float = 0.0
+
+
 class ThreatAlert(BaseModel):
     """Complete threat alert combining all analysis."""
     id: str = Field(default_factory=lambda: str(uuid.uuid4())[:12])
@@ -132,6 +141,7 @@ class ThreatAlert(BaseModel):
     anomaly: AnomalyResult
     classification: ClassificationResult
     risk: RiskScore
+    geo_location: GeoLocation = Field(default_factory=GeoLocation)
     brain_analysis: Optional[BrainAnalysis] = None
 
     class Config:

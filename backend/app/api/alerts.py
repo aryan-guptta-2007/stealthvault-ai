@@ -9,7 +9,7 @@ from sqlalchemy.future import select
 from sqlalchemy import desc
 from app.database import get_db
 from app.models.db_models import DBAlert
-from app.models.alert import ThreatAlert, Severity, NetworkPacket, AnomalyResult, ClassificationResult, RiskScore, BrainAnalysis
+from app.models.alert import ThreatAlert, Severity, NetworkPacket, AnomalyResult, ClassificationResult, RiskScore, BrainAnalysis, GeoLocation
 from app.api.auth import get_current_user, get_optional_user
 from app.core.limiter import limiter
 from fastapi import Request
@@ -56,7 +56,9 @@ def _db_alert_to_pydantic(db_alert: DBAlert, anonymize: bool = False) -> ThreatA
             "classification_contribution": 0.0,
             "behavior_flags": []
         })),
-        brain_analysis=brain
+        risk_data=verdict.detection.risk.model_dump(mode="json"),
+        brain_analysis=brain,
+        geo_location=GeoLocation(**db_alert.geo_data) if db_alert.geo_data else GeoLocation()
     )
 
 @router.get("/", response_model=list[ThreatAlert])
