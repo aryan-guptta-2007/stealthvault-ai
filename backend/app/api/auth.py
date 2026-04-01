@@ -20,10 +20,11 @@ from app.models.alert import RegisterInput
 from app.core.security import get_password_hash
 import secrets
 
-# The secret key should come from env or config. Hardcoded for Phase 4 immediate auth.
-SECRET_KEY = "STEALTHVAULT_SUPER_SECRET_KEY_V1"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+# Security settings from centralized config
+SECRET_KEY = settings.JWT_SECRET_KEY
+ALGORITHM = settings.JWT_ALGORITHM
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+REFRESH_TOKEN_EXPIRE_DAYS = settings.REFRESH_TOKEN_EXPIRE_DAYS
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
@@ -33,13 +34,38 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
-    to_encode.update({"exp": expire})
+        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    
+    # 🔐 Add cryptographic unique ID (jti) for revocation
+    if "jti" not in to_encode:
+        to_encode.update({"jti": str(uuid.uuid4())})
+        
+    to_encode.update({"exp": expire, "type": "access"})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-async def get_current_user(token: str = Depends(oauth2_scheme)):
-    """Dependency for securing API routes."""
+def create_refresh_token(data: dict):
+    """
+    🧬 GENERATE LONG-LIVED REFRESH TOKEN
+    Used to obtain new access tokens without re-authenticating.
+    """
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    
+    to_encode.update({
+        "exp": expire,
+        "type": "refresh",
+        "jti": str(uuid.uuid4())
+    })
+    
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+async def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db)
+):
+    """Dependency for securing API routes with enterprise revocation check."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -50,18 +76,34 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         username: str = payload.get("sub")
         tenant_id: str = payload.get("tenant_id")
         roles: list = payload.get("roles", [])
-        if username is None or tenant_id is None:
+        jti: str = payload.get("jti")
+        token_type: str = payload.get("type", "access")
+
+        if username is None or tenant_id is None or jti is None or token_type != "access":
             raise credentials_exception
+            
+        # 🛡️ REVOCATION CHECK: Is this token blacklisted?
+        from app.models.db_models import DBRevokedToken
+        revoked_check = await db.execute(select(DBRevokedToken).where(DBRevokedToken.jti == jti))
+        if revoked_check.scalars().first():
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="🛡️ SESSION EXPIRED: This token has been revoked or logged out.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+            
     except jwt.PyJWTError:
         raise credentials_exception
         
     class CurrentUser:
-        def __init__(self, username, tenant_id, roles):
+        def __init__(self, username, tenant_id, roles, uid, jti):
             self.username = username
             self.tenant_id = tenant_id
             self.roles = roles
+            self.uid = uid
+            self.jti = jti
             
-    return CurrentUser(username, tenant_id, roles)
+    return CurrentUser(username, tenant_id, roles, payload.get("uid"), jti)
  
 oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token", auto_error=False)
 
@@ -123,6 +165,14 @@ async def login_for_access_token(
         }, 
         expires_delta=access_token_expires
     )
+    
+    refresh_token = create_refresh_token(
+        data={
+            "sub": user.username,
+            "tenant_id": user.tenant_id,
+            "uid": user.id
+        }
+    )
 
     # 🛡️ AUDIT: Successful Login
     await log_audit(
@@ -135,7 +185,12 @@ async def login_for_access_token(
         metadata={"ip": request.client.host}
     )
 
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "access_token": access_token, 
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    }
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
@@ -253,3 +308,77 @@ async def join_waitlist(
         "message": "Launch code received. You're now on the priority list!",
         "status": "confirmed"
     }
+
+
+@router.post("/logout", status_code=status.HTTP_200_OK)
+async def logout(
+    request: Request,
+    current_user: object = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    🔐 MISSION LOGOUT: Revoke current session.
+    Blacklists the active access token until it naturally expires.
+    """
+    from app.models.db_models import DBRevokedToken
+    
+    # 🛡️ Cryptographically revoke the token
+    revocation = DBRevokedToken(
+        jti=getattr(current_user, "jti"),
+        expires_at=datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    db.add(revocation)
+    
+    # 🛡️ AUDIT: Logout
+    await log_audit(
+        action="LOGOUT",
+        target=current_user.username,
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.uid,
+        username=current_user.username,
+        result="SUCCESS",
+        metadata={"ip": request.client.host}
+    )
+    
+    await db.commit()
+    return {"message": "Identity de-authorized. Session terminated."}
+
+@router.post("/refresh")
+async def refresh_token_endpoint(
+    refresh_token: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    🧬 SESSION PROLONGATION: Swap valid refresh token for a new access token.
+    Enables smooth UX without compromising long-term token security.
+    """
+    try:
+        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "refresh":
+            raise HTTPException(status_code=401, detail="Invalid token type")
+            
+        username = payload.get("sub")
+        # Find user to get latest roles
+        result = await db.execute(select(DBUser).where(DBUser.username == username))
+        user = result.scalars().first()
+        
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+            
+        # Issue new Access Token
+        new_access_token = create_access_token(
+            data={
+                "sub": user.username,
+                "tenant_id": user.tenant_id,
+                "roles": user.roles,
+                "uid": user.id
+            }
+        )
+        
+        return {
+            "access_token": new_access_token,
+            "token_type": "bearer",
+            "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        }
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")

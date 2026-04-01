@@ -269,3 +269,17 @@ class DBWaitlist(Base):
     email = Column(String(255), unique=True, index=True, nullable=False)
     registered_at = Column(DateTime, default=datetime.utcnow)
     is_invited = Column(Boolean, default=False)
+
+
+class DBRevokedToken(Base):
+    """
+    🔐 THE BLACKLIST: Cryptographic Revocation
+    Stores JWT identifiers (jti) for tokens that have been explicitly revoked.
+    Ensures that logged-out or stolen tokens cannot be reused.
+    """
+    __tablename__ = "revoked_tokens"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    jti = Column(String(36), unique=True, index=True, nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True) # Token's 'exp' to allow auto-cleanup
+    revoked_at = Column(DateTime, default=datetime.utcnow)

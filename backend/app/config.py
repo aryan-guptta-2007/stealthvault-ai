@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     # WebSocket
     WS_BROADCAST_INTERVAL: float = 1.0
 
+    # 🔐 Security & Auth (Elite Tier)
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    JWT_ALGORITHM: str = "HS256"
+    JWT_SECRET_KEY: str = "STEALTHVAULT_SUPER_SECRET_KEY_V1" # Move to ENV in production
+
     # 🔔 External Notifications (Option 3)
     TELEGRAM_BOT_TOKEN: Optional[str] = None
     TELEGRAM_CHAT_ID: Optional[str] = None
