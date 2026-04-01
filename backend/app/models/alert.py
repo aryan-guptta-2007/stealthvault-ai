@@ -10,6 +10,13 @@ from enum import Enum
 import uuid
 
 
+class SafeConfig:
+    """🛡️ MISSION-CRITICAL: Prevent hidden payload injection."""
+    extra = "forbid"
+    validate_assignment = True
+    str_strip_whitespace = True
+
+
 class AttackType(str, Enum):
     """Known attack categories."""
     NORMAL = "Normal"
@@ -50,17 +57,20 @@ class NetworkPacket(BaseModel):
     """
     id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8], min_length=8, max_length=8)
     timestamp: datetime = Field(default_factory=datetime.utcnow)
-    tenant_id: constr(min_length=1, max_length=50) = "default"
+    tenant_id: str = Field("default", min_length=1, max_length=50)
     src_ip: IPvAnyAddress = Field(..., description="The source IP address of the packet")
     dst_ip: IPvAnyAddress = Field(..., description="The destination IP address of the packet")
-    src_port: int = Field(0, ge=0, le=65535, description="Source port (0-65535)")
-    dst_port: int = Field(0, ge=0, le=65535, description="Destination port (0-65535)")
+    src_port: int = Field(0, ge=0, le=65535)
+    dst_port: int = Field(0, ge=0, le=65535)
     protocol: Protocol = Protocol.TCP
-    packet_size: int = Field(0, ge=0, description="Total packet size in bytes")
-    flags: str = Field("", max_length=20, description="TCP flags (e.g., SYN, ACK)")
-    payload_size: int = Field(0, ge=0, description="Payload size in bytes")
-    ttl: int = Field(64, ge=0, le=255, description="Time to live (TTL)")
-    duration: float = Field(0.0, ge=0.0, description="Flow duration in seconds")
+    packet_size: int = Field(0, ge=0)
+    flags: str = Field("", max_length=20)
+    payload_size: int = Field(0, ge=0)
+    ttl: int = Field(64, ge=0, le=255)
+    duration: float = Field(0.0, ge=0.0)
+
+    class Config(SafeConfig):
+        pass
 
 
 class FeatureVector(BaseModel):
@@ -81,47 +91,44 @@ class FeatureVector(BaseModel):
     flag_rst: float = 0.0
     flag_psh: float = 0.0
 
+    class Config(SafeConfig):
+        pass
+
 
 class AnomalyResult(BaseModel):
-    """Output from anomaly detection model."""
     is_anomaly: bool
     anomaly_score: float = Field(ge=0.0, le=1.0)
     confidence: float = Field(ge=0.0, le=1.0)
+    explanation: Optional[str] = Field(None, max_length=500)
     
-    # 🧠 EXPLAINABILITY (XAI)
-    feature_contributions: dict[str, float] = {} # Feature -> % impact
-    explanation: Optional[str] = None
+    class Config(SafeConfig):
+        pass
 
 
 class ClassificationResult(BaseModel):
-    """Output from attack classifier."""
     attack_type: AttackType
     confidence: float = Field(ge=0.0, le=1.0)
-    probabilities: dict[str, float] = {}
+    explanation: Optional[str] = Field(None, max_length=500)
     
-    # 🧠 EXPLAINABILITY (XAI)
-    feature_contributions: dict[str, float] = {}
-    explanation: Optional[str] = None
+    class Config(SafeConfig):
+        pass
 
 
 class RiskScore(BaseModel):
-    """Combined risk assessment."""
     score: float = Field(ge=0.0, le=1.0)
     severity: Severity
-    anomaly_contribution: float
-    classification_contribution: float
-    behavior_flags: list[str] = []
+
+    class Config(SafeConfig):
+        pass
 
 
 class BrainAnalysis(BaseModel):
-    """AI brain analysis output."""
-    attack_name: str
-    description: str
-    danger_level: str
-    what_is_happening: str
-    how_to_stop: str
-    technical_details: str
+    attack_name: str = Field(..., max_length=100)
+    description: str = Field(..., max_length=500)
     recommended_actions: list[str] = []
+
+    class Config(SafeConfig):
+        pass
 
 
 class GeoLocation(BaseModel):
@@ -132,20 +139,21 @@ class GeoLocation(BaseModel):
     latitude: float = 0.0
     longitude: float = 0.0
 
+    class Config(SafeConfig):
+        pass
+
 
 class ThreatAlert(BaseModel):
-    """Complete threat alert combining all analysis."""
     id: str = Field(default_factory=lambda: str(uuid.uuid4())[:12])
     timestamp: datetime = Field(default_factory=datetime.utcnow)
-    attack_type: str = "Unknown"
+    attack_type: str = Field("Unknown", max_length=50)
     packet: NetworkPacket
     anomaly: AnomalyResult
     classification: ClassificationResult
     risk: RiskScore
-    geo_location: GeoLocation = Field(default_factory=GeoLocation)
     brain_analysis: Optional[BrainAnalysis] = None
 
-    class Config:
+    class Config(SafeConfig):
         json_encoders = {
             datetime: lambda v: v.isoformat()
         }
@@ -165,27 +173,24 @@ class DashboardStats(BaseModel):
     packets_per_minute: float = 0.0
     system_status: str = "ACTIVE"
 
+    class Config(SafeConfig):
+        pass
+
 
 class SimulationInput(BaseModel):
-    """
-    ⚔️ Hardened Simulation Input
-    Strictly type-safe configuration for offensive security drills.
-    """
-    attack_type: str = Field(
-        "ddos", 
-        pattern="^(ddos|bruteforce|portscan|malware|sqlinjection|xss)$", 
-        description="Type of attack to simulate"
-    )
-    intensity: str = Field(
-        "medium", 
-        pattern="^(low|medium|high)$", 
-        description="Simulation traffic intensity"
-    )
+    attack_type: str = Field("ddos", pattern="^(ddos|bruteforce|portscan|malware|sqlinjection|xss)$")
+    intensity: str = Field("medium", pattern="^(low|medium|high)$")
+
+    class Config(SafeConfig):
+        pass
+
 
 class RegisterInput(BaseModel):
-    """SaaS Onboarding Input."""
     tenant_name: str = Field(..., min_length=3, max_length=50)
     username: str = Field(..., min_length=4, max_length=32)
-    password: str = Field(..., min_length=8)
-    email: Optional[str] = None
+    password: str = Field(..., min_length=8, max_length=128)
+    email: Optional[str] = Field(None, max_length=100)
     plan: str = Field("FREE", pattern="^(FREE|PRO|ENTERPRISE)$")
+
+    class Config(SafeConfig):
+        pass

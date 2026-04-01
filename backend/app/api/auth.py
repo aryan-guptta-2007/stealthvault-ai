@@ -8,11 +8,14 @@ import jwt
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from app.config import settings
+import logging
+from app.core.logger import logger
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.database import get_db
 from app.models.db_models import DBUser, DBTenant, DBWaitlist
+from app.core.sanitizer import sanitize_string
 from app.core.limiter import limiter
 from fastapi import Request
 from app.core.audit import log_audit
@@ -168,8 +171,11 @@ async def login_for_access_token(
     Verifies credentials and issues a JWT scoped to a specific tenant.
     Includes RBAC roles for enterprise access control.
     """
+    # 🧪 SANITIZE: Defensive boundary for identity input
+    safe_username = sanitize_string(form_data.username)
+    
     # Lookup User in Postgres
-    result = await db.execute(select(DBUser).where(DBUser.username == form_data.username))
+    result = await db.execute(select(DBUser).where(DBUser.username == safe_username))
     user = result.scalars().first()
     
     # 1. BRUTE-FORCE COUNTERMEASURE: Account Lock Check
@@ -182,19 +188,27 @@ async def login_for_access_token(
 
     # 2. Secure Password Verification (Bcrypt)
     if not user or not verify_password(form_data.password, user.password_hash):
-        # ⏳ SLOWDOWN: Defensive friction against bots
-        time.sleep(1.0)
+        # ⏳ EXPONENTIAL REJECTION: Mathematical friction against brute-force
+        # 2^n seconds delay, max 10s
+        attempts = user.failed_attempts if user else 1
+        rejection_delay = min(2 ** attempts, 10)
+        time.sleep(rejection_delay)
         
         # 🔔 Tracking Failed Attempt
+        client_ip = request.client.host
         if user:
             user.failed_attempts += 1
             if user.failed_attempts >= 5:
                 user.locked_until = datetime.utcnow() + timedelta(minutes=10)
-                message = "Account locked due to excessive failed attempts."
+                message = f"🛡️ ACCOUNT LOCKED: Excessive failure from {client_ip}."
             else:
                 message = f"Invalid credentials. Attempt {user.failed_attempts}/5"
+            
+            # SOC Visibility: Warning Log with IP + User correlation
+            logger.warning(f"🔐 AUTH FAILURE: User '{safe_username}' targeted from IP {client_ip} (Attempt {user.failed_attempts})")
             await db.commit()
         else:
+            logger.warning(f"🔐 AUTH FAILURE: Unknown user '{safe_username}' targeted from IP {client_ip}")
             message = "Invalid credentials"
 
         # 🛡️ AUDIT: Failed Login Attempt
@@ -216,6 +230,10 @@ async def login_for_access_token(
     # 3. MISSION SUCCESS: Reset session state
     user.failed_attempts = 0
     user.locked_until = None
+    
+    # SOC Success Log
+    logger.info(f"✅ AUTH SUCCESS: User '{safe_username}' authenticated from IP {request.client.host}")
+    
     await db.commit()
         
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -289,8 +307,9 @@ async def register_tenant(
         limit = quotas.get(payload.plan.upper(), 100000)
 
         # Create Tenant
+        safe_tenant_name = sanitize_string(payload.tenant_name)
         new_tenant = DBTenant(
-            name=payload.tenant_name,
+            name=safe_tenant_name,
             api_key=f"sv_{secrets.token_urlsafe(32)}",
             plan=payload.plan.upper(),
             monthly_packet_limit=limit
@@ -299,10 +318,11 @@ async def register_tenant(
         await db.flush() # Get the new tenant ID
 
         # Create Admin User
+        safe_username = sanitize_string(payload.username)
         new_user = DBUser(
             tenant_id=new_tenant.id,
-            username=payload.username,
-            email=payload.email,
+            username=safe_username,
+            email=sanitize_string(payload.email),
             password_hash=get_password_hash(payload.password),
             roles=["admin", "billing_admin", "soc_manager"]
         )
@@ -314,8 +334,8 @@ async def register_tenant(
             target=new_tenant.id,
             tenant_id=new_tenant.id,
             result="SUCCESS",
-            message=f"New SaaS onboarded: {payload.tenant_name} ({payload.plan})",
-            metadata={"email": payload.email, "username": payload.username}
+            message=f"New SaaS onboarded: {safe_tenant_name} ({payload.plan})",
+            metadata={"email": payload.email, "username": safe_username}
         )
         
         await db.commit()
