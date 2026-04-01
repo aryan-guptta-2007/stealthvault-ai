@@ -149,6 +149,9 @@ async def lifespan(app: FastAPI):
     
     # Start Defender auto-unblock daemon
     asyncio.create_task(defender_cleanup_daemon())
+    
+    # 🧹 Start Data Lifecycle Daemon (Purge old telemetry)
+    asyncio.create_task(data_retention_daemon())
     print("  🕰️ Defender Safety Daemon Started")
 
     # Start Autonomous Offensive Simulation (Live Dashboard Mode)
@@ -238,38 +241,38 @@ app.add_middleware(SlowAPIMiddleware)
 
 async def data_retention_daemon():
     """
-    🧹 Data Retention Daemon
-    Purges old inspection logs to prevent database bloat.
-    Default: Keep 7 days of full audit trails.
+    🕰️ THE CHRONOS PURGE: Automated Data Lifecycle Management
+    Ensures the system remains lean and compliant by purging data older than the retention window.
+    Default: 30 days for alerts/logs.
     """
-    from app.database import AsyncSessionLocal
-    from app.models.db_models import DBInspectionLog, DBSystemEvent
-    from sqlalchemy import delete
-    import logging
-
-    RETENTION_DAYS = 7
+    retention_days = settings.ALERTS_RETENTION_DAYS
+    logger.info(f"🕰️ Data Lifecycle Manager: Online (Policy: {retention_days} days)")
     
     while True:
         try:
-            cutoff = datetime.utcnow() - timedelta(days=RETENTION_DAYS)
+            cutoff = datetime.utcnow() - timedelta(days=retention_days)
             async with AsyncSessionLocal() as db:
-                # Purge Inspection Logs
-                stmt1 = delete(DBInspectionLog).where(DBInspectionLog.timestamp < cutoff)
-                res1 = await db.execute(stmt1)
+                from sqlalchemy import delete
+                from app.models.db_models import DBAlert, DBInspectionLog, DBSystemEvent
                 
-                # Purge System Events
-                stmt2 = delete(DBSystemEvent).where(DBSystemEvent.timestamp < cutoff)
-                res2 = await db.execute(stmt2)
+                # 🛡️ PURGE: Alerts
+                alert_purge = await db.execute(delete(DBAlert).where(DBAlert.timestamp < cutoff))
+                
+                # 🔬 PURGE: Forensic Inspection Logs
+                log_purge = await db.execute(delete(DBInspectionLog).where(DBInspectionLog.timestamp < cutoff))
+                
+                # 📊 PURGE: System Events
+                event_purge = await db.execute(delete(DBSystemEvent).where(DBSystemEvent.timestamp < cutoff))
                 
                 await db.commit()
                 
-                total = res1.rowcount + res2.rowcount
+                total = alert_purge.rowcount + log_purge.rowcount + event_purge.rowcount
                 if total > 0:
-                    logging.info(f"🧹 Cleanup: Purged {total} old logs (older than {cutoff}).")
+                    logger.info(f"🧹 Lifecycle Purge: Successfully neutralized {total} stale records.")
         except Exception as e:
-            logging.error(f"❌ Cleanup Error: {e}")
-        
-        # Run once every 6 hours
+            logger.error(f"❌ Data Lifecycle Fault: {e}")
+            
+        # Run every 6 hours
         await asyncio.sleep(6 * 3600)
 
 async def defender_cleanup_daemon():
@@ -583,6 +586,37 @@ async def abuse_protection_middleware(request: Request, call_next):
             )
             
     return response
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    """
+    🧱 INFRASTRUCTURE HARDENING: Mission-Critical Security Headers
+    Defends against Clickjacking, Sniffing, and XSS at the browser layer.
+    """
+    response: Response = await call_next(request)
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
+@app.middleware("http")
+async def payload_limit_middleware(request: Request, call_next):
+    """
+    🛡️ APPLICATION DEFENSE: Payload Size Enforcement
+    Protects the system from 'Large-Payload' exhaustion attacks and memory flooding.
+    """
+    if request.method == "POST":
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > settings.MAX_PAYLOAD_BYTES:
+            return JSONResponse(
+                status_code=413,
+                content={
+                    "error": "PAYLOAD_TOO_LARGE",
+                    "message": f"🛡️ SECURITY VIOLATION: Request body exceeds mission-critical limit ({settings.MAX_PAYLOAD_BYTES / 1024 / 1024:.1f}MB)."
+                }
+            )
+    return await call_next(request)
 
 @app.middleware("http")
 async def log_requests_middleware(request: Request, call_next):

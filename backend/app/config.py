@@ -14,9 +14,14 @@ class Settings(BaseSettings):
     # Application
     APP_NAME: str = "StealthVault AI"
     APP_VERSION: str = "1.0.0"
-    DEBUG: bool = True
+    DEBUG: bool = False # 🛡️ Hardened default for production
     HOST: str = "0.0.0.0"
     PORT: int = 8000
+
+    # 🧱 Infrastructure Hardening (Elite Tier)
+    MAX_PAYLOAD_BYTES: int = 1024 * 1024 # 1MB Limit
+    ALERTS_RETENTION_DAYS: int = 30
+    LOGS_RETENTION_DAYS: int = 7
 
     # Persistence & Messaging
     DATABASE_URL: str = "postgresql+asyncpg://stealthadmin:stealthpassword@localhost:5432/stealthvault"

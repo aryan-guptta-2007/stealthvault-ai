@@ -19,6 +19,29 @@ from app.collector.extractor import extractor
 from app.core.audit import log_audit
 import numpy as np
 
+
+def mask_ip(ip: str | None) -> str:
+    """
+    🛡️ PRIVACY FIREWALL: Anonymize IP addresses for non-privileged views.
+    Ensures that exact hosts are hidden while preserving network context.
+    """
+    if not ip:
+        return "x.x.x.x"
+    try:
+        # IPv4 Masking (Mask last two octets)
+        parts = ip.split('.')
+        if len(parts) == 4:
+            return f"{parts[0]}.{parts[1]}.x.x"
+        
+        # IPv6 Masking (Mask last 4 segments)
+        ipv6_parts = ip.split(':')
+        if len(ipv6_parts) >= 4:
+            return f"{':'.join(ipv6_parts[:4])}:xxxx:xxxx:xxxx:xxxx"
+            
+        return "xxxx:xxxx:xxxx:xxxx"
+    except Exception:
+        return "x.x.x.x"
+
 router = APIRouter(prefix="/alerts", tags=["Alerts"])
 
 def _db_alert_to_pydantic(db_alert: DBAlert, anonymize: bool = False) -> ThreatAlert:
@@ -26,22 +49,15 @@ def _db_alert_to_pydantic(db_alert: DBAlert, anonymize: bool = False) -> ThreatA
     brain = BrainAnalysis(**db_alert.brain_analysis) if db_alert.brain_analysis else None
     
     if anonymize:
-        # Anonymize IPs by masking last two octets
-        if packet.src_ip:
-            parts = packet.src_ip.split('.')
-            if len(parts) == 4:
-                packet.src_ip = f"{parts[0]}.{parts[1]}.x.x"
-        if packet.dst_ip:
-            parts = packet.dst_ip.split('.')
-            if len(parts) == 4:
-                packet.dst_ip = f"{parts[0]}.{parts[1]}.x.x"
+        # 🧪 ANONYMIZE: Mission-critical identity preservation
+        packet.src_ip = mask_ip(str(packet.src_ip))
+        packet.dst_ip = mask_ip(str(packet.dst_ip))
         
-        # Hide sensitive brain analysis from public dashboard
+        # 🔐 ZERO-TRUST: Hide proprietary analysis from public dashboard
         if brain:
-            brain.what_is_happening = "[PROTECTED] Please log in to view full SOC breakdown."
-            brain.how_to_stop = "[PROTECTED] Login required."
-            brain.technical_details = "[PROTECTED] Login required."
-            brain.recommended_actions = []
+            brain.attack_name = "🛡️ PROTECTED"
+            brain.description = "Full analysis is only available to authorized SOC personnel. Authentication Required."
+            brain.recommended_actions = ["[PROTECTED]"]
 
     return ThreatAlert(
         id=db_alert.id,
