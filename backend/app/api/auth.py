@@ -19,6 +19,8 @@ from app.core.audit import log_audit
 from app.models.alert import RegisterInput
 from app.core.security import get_password_hash
 import secrets
+import re
+import time
 
 # Security settings from centralized config
 SECRET_KEY = settings.JWT_SECRET_KEY
@@ -116,6 +118,41 @@ async def get_optional_user(token: str | None = Depends(oauth2_scheme_optional))
     except HTTPException:
         return None
 
+def validate_password(password: str):
+    """
+    🏗️ PASSWORD COMPLEXITY ENGINE
+    Enforces enterprise standards for identity preservation.
+    """
+    if len(password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="🛡️ WEAK PASSWORD: Access terminated. Must be at least 8 characters."
+        )
+
+    if not re.search(r"[A-Z]", password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="🛡️ WEAK PASSWORD: Must include at least one uppercase letter."
+        )
+
+    if not re.search(r"[a-z]", password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="🛡️ WEAK PASSWORD: Must include at least one lowercase letter."
+        )
+
+    if not re.search(r"[0-9]", password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="🛡️ WEAK PASSWORD: Must include at least one number."
+        )
+
+    if not re.search(r"[!@#$%^&*]", password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="🛡️ WEAK PASSWORD: Must include at least one special character (!@#$%^&*)."
+        )
+
 from app.core.security import verify_password
 
 @router.post("/token")
@@ -135,25 +172,51 @@ async def login_for_access_token(
     result = await db.execute(select(DBUser).where(DBUser.username == form_data.username))
     user = result.scalars().first()
     
-    # Secure Password Verification (Bcrypt)
+    # 1. BRUTE-FORCE COUNTERMEASURE: Account Lock Check
+    if user.locked_until and user.locked_until > datetime.utcnow():
+        lock_remaining = (user.locked_until - datetime.utcnow()).total_seconds() / 60
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"🛡️ ACCOUNT LOCKED: Brute-force violation detected. Try again in {int(lock_remaining)} minutes."
+        )
+
+    # 2. Secure Password Verification (Bcrypt)
     if not user or not verify_password(form_data.password, user.password_hash):
-        # 🛡️ AUDIT: Failed Login Attempt
-        # Use the actual tenant if user was found, else "global"
-        failed_tenant = user.tenant_id if user else "global"
+        # ⏳ SLOWDOWN: Defensive friction against bots
+        time.sleep(1.0)
         
+        # 🔔 Tracking Failed Attempt
+        if user:
+            user.failed_attempts += 1
+            if user.failed_attempts >= 5:
+                user.locked_until = datetime.utcnow() + timedelta(minutes=10)
+                message = "Account locked due to excessive failed attempts."
+            else:
+                message = f"Invalid credentials. Attempt {user.failed_attempts}/5"
+            await db.commit()
+        else:
+            message = "Invalid credentials"
+
+        # 🛡️ AUDIT: Failed Login Attempt
+        failed_tenant = user.tenant_id if user else "global"
         await log_audit(
             action="LOGIN",
             target=form_data.username,
             tenant_id=failed_tenant,
             result="FAILURE",
-            message="Invalid credentials",
+            message=message,
             metadata={"ip": request.client.host}
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            detail=message,
             headers={"WWW-Authenticate": "Bearer"},
         )
+        
+    # 3. MISSION SUCCESS: Reset session state
+    user.failed_attempts = 0
+    user.locked_until = None
+    await db.commit()
         
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
@@ -203,6 +266,9 @@ async def register_tenant(
     Creates a new Tenant and its first Admin user.
     """
     try:
+        # 🧱 0. POLICY ENFORCEMENT
+        validate_password(payload.password)
+        
         # 1. 🛡️ Verification
         # Check if username or tenant exists
         user_check = await db.execute(select(DBUser).where(DBUser.username == payload.username))

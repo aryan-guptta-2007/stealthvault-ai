@@ -38,6 +38,11 @@ class DBUser(Base):
     password_hash = Column(String(255))
     roles = Column(JSON) # e.g., ["admin", "soc_analyst"]
     is_verified = Column(Boolean, default=False)
+    
+    # 🔐 Account Protection (Elite Tier)
+    failed_attempts = Column(Integer, default=0)
+    locked_until = Column(DateTime, nullable=True)
+    
     created_at = Column(DateTime, default=datetime.utcnow)
     
     tenant = relationship("DBTenant", back_populates="users")
