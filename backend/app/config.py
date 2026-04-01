@@ -29,8 +29,7 @@ class Settings(BaseSettings):
     LOGS_RETENTION_DAYS: int = 7
 
     # Persistence & Messaging
-    # Persistence & Messaging
-    DATABASE_URL: str = os.getenv("SV_DATABASE_URL", "sqlite+aiosqlite:///./stealthvault.db")
+    DATABASE_URL: str = os.getenv("SV_DATABASE_URL", "")
     REDIS_URL: Optional[str] = None
 
     # CORS
@@ -72,7 +71,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     JWT_ALGORITHM: str = "HS256"
-    JWT_SECRET_KEY: Optional[str] = os.getenv("SV_JWT_SECRET_KEY")
+    JWT_SECRET_KEY: str = os.getenv("SV_JWT_SECRET_KEY", "fallback_key")
 
     # 🔔 External Notifications (Option 3)
     TELEGRAM_BOT_TOKEN: Optional[str] = None
