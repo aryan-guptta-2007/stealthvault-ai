@@ -15,6 +15,12 @@ from app.models.alert import (
 )
 from app.decision.brain import security_brain
 from app.api.traffic import alert_store
+from app.api.auth import get_current_user
+from app.api.rbac import RoleChecker
+from fastapi import Depends
+
+# RBAC Instances
+soc_analyst_access = Depends(RoleChecker(["soc_analyst"]))
 
 router = APIRouter(prefix="/brain", tags=["AI Brain"])
 
@@ -26,7 +32,7 @@ class BrainRequest(BaseModel):
 
 
 @router.post("/analyze", response_model=BrainAnalysis)
-async def analyze_threat(request: BrainRequest):
+async def analyze_threat(request: BrainRequest, user: object = soc_analyst_access):
     """
     🧠 Ask the AI Security Brain to explain a threat.
     
@@ -74,7 +80,7 @@ async def analyze_threat(request: BrainRequest):
 
 
 @router.get("/attacks")
-async def list_attack_types():
+async def list_attack_types(user: object = soc_analyst_access):
     """List all known attack types the brain can explain."""
     return {
         "attack_types": [

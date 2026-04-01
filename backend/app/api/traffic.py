@@ -26,6 +26,7 @@ from app.decision.brain import security_brain
 from app.agents.orchestrator import soc_orchestrator
 from app.services.simulator import attack_simulator
 from app.api.auth import get_current_user, get_optional_user
+from app.api.rbac import RoleChecker
 
 router = APIRouter(prefix="/traffic", tags=["Traffic Analysis"])
 
@@ -207,7 +208,7 @@ async def simulate_attack(
     request: Request,
     sim: SimulationInput,
     db: AsyncSession = Depends(get_db),
-    current_user: object = Depends(get_current_user)
+    current_user: object = Depends(RoleChecker(["soc_manager"]))
 ):
     """
     ⚔️ THE OFFENSIVE SUITE: Launch a simulated attack against the Alpha-Node.

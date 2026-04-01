@@ -62,7 +62,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
             self.roles = roles
             
     return CurrentUser(username, tenant_id, roles)
-
+ 
 oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token", auto_error=False)
 
 async def get_optional_user(token: str | None = Depends(oauth2_scheme_optional)):

@@ -15,7 +15,12 @@ from app.agents.story import story_engine
 from app.models.alert import NetworkPacket, Protocol
 from fastapi import Depends, Request
 from app.api.auth import get_current_user, get_optional_user
+from app.api.rbac import RoleChecker
 from app.core.limiter import limiter
+
+# RBAC Instances
+soc_manager_only = Depends(RoleChecker(["soc_manager"]))
+soc_analyst_access = Depends(RoleChecker(["soc_analyst"]))
 
 
 router = APIRouter(prefix="/soc", tags=["🤖 Multi-Agent SOC"])
@@ -45,7 +50,7 @@ class BlockRequest(BaseModel):
 
 @router.post("/analyze")
 @limiter.limit("100/minute")
-async def soc_analyze(request: Request, packet_input: PacketInput, current_user: object = Depends(get_current_user)):
+async def soc_analyze(request: Request, packet_input: PacketInput, current_user: object = soc_analyst_access):
     """
     🎯 Run the FULL 3-agent pipeline on a packet.
     
@@ -81,7 +86,7 @@ async def soc_analyze(request: Request, packet_input: PacketInput, current_user:
 
 @router.get("/status")
 @limiter.limit("60/minute")
-async def soc_status(request: Request, current_user: dict = Depends(get_current_user)):
+async def soc_status(request: Request, current_user: dict = soc_analyst_access):
     """Get status of all 3 agents and the orchestrator, scoped by tenant."""
     tenant_id = getattr(current_user, "tenant_id", "default")
     return soc_orchestrator.get_stats(tenant_id)
@@ -115,7 +120,7 @@ async def defender_status(request: Request, current_user: dict = Depends(get_cur
 
 @router.post("/defender/arm")
 @limiter.limit("10/minute")
-async def arm_defender(request: Request, current_user: dict = Depends(get_current_user)):
+async def arm_defender(request: Request, current_user: dict = soc_manager_only):
     """🛡️ ARM the Defender for this tenant."""
     tenant_id = getattr(current_user, "tenant_id", "default")
     return defender_agent.arm(tenant_id)
@@ -123,7 +128,7 @@ async def arm_defender(request: Request, current_user: dict = Depends(get_curren
 
 @router.post("/defender/disarm")
 @limiter.limit("10/minute")
-async def disarm_defender(request: Request, current_user: dict = Depends(get_current_user)):
+async def disarm_defender(request: Request, current_user: dict = soc_manager_only):
     """Disarm the Defender — Enable Shadow Mode for this tenant."""
     tenant_id = getattr(current_user, "tenant_id", "default")
     return defender_agent.disarm(tenant_id)
@@ -131,7 +136,7 @@ async def disarm_defender(request: Request, current_user: dict = Depends(get_cur
 
 @router.post("/defender/block")
 @limiter.limit("60/minute")
-async def manual_block(request: Request, payload: BlockRequest, current_user: dict = Depends(get_current_user)):
+async def manual_block(request: Request, payload: BlockRequest, current_user: dict = soc_manager_only):
     """Manually block an IP address for this tenant."""
     tenant_id = getattr(current_user, "tenant_id", "default")
     action = defender_agent.manual_block(payload.ip, tenant_id, payload.reason)
@@ -140,7 +145,7 @@ async def manual_block(request: Request, payload: BlockRequest, current_user: di
 
 @router.post("/defender/unblock")
 @limiter.limit("60/minute")
-async def unblock_ip(request: Request, payload: BlockRequest, current_user: dict = Depends(get_current_user)):
+async def unblock_ip(request: Request, payload: BlockRequest, current_user: dict = soc_manager_only):
     """Remove an IP from the blocklist for this tenant."""
     tenant_id = getattr(current_user, "tenant_id", "default")
     action = defender_agent.unblock(payload.ip, tenant_id)
@@ -149,7 +154,7 @@ async def unblock_ip(request: Request, payload: BlockRequest, current_user: dict
 
 @router.get("/defender/blocklist")
 @limiter.limit("60/minute")
-async def get_blocklist(request: Request, current_user: dict = Depends(get_current_user)):
+async def get_blocklist(request: Request, current_user: dict = soc_analyst_access):
     """Get the current blocklist for this tenant."""
     tenant_id = getattr(current_user, "tenant_id", "default")
     stats = defender_agent.get_stats(tenant_id)
