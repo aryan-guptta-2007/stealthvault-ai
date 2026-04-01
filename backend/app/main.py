@@ -9,6 +9,7 @@
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -226,6 +227,7 @@ app = FastAPI(
 )
 
 # --- 🛡️ PRODUCTION CORS CONFIGURATION ---
+app.add_middleware(HTTPSRedirectMiddleware)
 cors_origins = settings.ALLOWED_ORIGINS if hasattr(settings, 'ALLOWED_ORIGINS') else ["*"]
 app.add_middleware(
     CORSMiddleware,
@@ -238,6 +240,17 @@ app.add_middleware(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response: Response = await call_next(request)
+    
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    
+    return response
 
 async def data_retention_daemon():
     """
@@ -487,15 +500,25 @@ async def global_exception_handler(request: Request, exc: Exception):
     🛡️ ELITE GLOBAL RESILIENCY LAYER
     Catch-all exception handler to prevent raw 500 crashes and information leaks.
     """
-    error_msg = str(exc)
-    logger.error(f"  🔥 UNHANDLED FAULT (Path: {request.url}): {error_msg}")
+    # 🕵️ Redact Error: Ensure the error message itself doesn't contain secrets
+    # Our SecretRedactionFilter will handle the log, but we also mask it for the user
+    raw_error = str(exc)
     
+    # SOC Logging: Internal error is logged (Redacted by Filter)
+    logger.error(f"  🔥 UNHANDLED FAULT (Path: {request.url.path})")
+    
+    # User Response: Return a sanitized message to prevent info leakage
+    # We do NOT return the raw `str(exc)` in production unless DEBUG is True
+    display_error = "An internal mission-critical fault occurred."
+    if settings.DEBUG:
+        display_error = raw_error
+
     return JSONResponse(
         status_code=500,
         content={
             "status": "error",
-            "message": f"🛡️ MISSION CRITICAL FAULT: {error_msg}",
-            "path": str(request.url),
+            "message": f"🛡️ MISSION CRITICAL FAULT: {display_error}",
+            "path": str(request.url.path),
             "timestamp": datetime.utcnow().isoformat(),
             "service": "StealthVault AI - SOC Core"
         },

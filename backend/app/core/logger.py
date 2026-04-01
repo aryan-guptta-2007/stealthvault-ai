@@ -3,11 +3,34 @@ import sys
 import os
 import json
 import traceback
+import re
 from datetime import datetime
 from typing import Optional
 
 # To be used for dynamic DB logging (initialized later to avoid circular imports)
 _DB_LOG_FUNC = None
+
+class SecretRedactionFilter(logging.Filter):
+    """
+    🛡️ ELITE REDACTION SHIELD
+    Intercepts and masks potential secrets in log messages.
+    """
+    SENSITIVE_PATTERNS = [
+        r'password["\']?\s*[:=]\s*["\']?([^"\'\s,]+)["\']?',
+        r'token["\']?\s*[:=]\s*["\']?([^"\'\s,]+)["\']?',
+        r'secret["\']?\s*[:=]\s*["\']?([^"\'\s,]+)["\']?',
+        r'key["\']?\s*[:=]\s*["\']?([^"\'\s,]+)["\']?',
+        r'authorization["\']?\s*[:]\s*Bearer\s+([^"\'\s,]+)',
+        r'cookie["\']?\s*[:]\s*([^"\'\s,;]+)',
+        r'postgres:\/\/([^:@]+):([^@]+)@', # DB Credentials
+    ]
+
+    def filter(self, record):
+        msg = str(record.msg)
+        for pattern in self.SENSITIVE_PATTERNS:
+            msg = re.sub(pattern, lambda m: m.group(0).replace(m.group(1), "[REDACTED]"), msg, flags=re.IGNORECASE)
+        record.msg = msg
+        return True
 
 class DatabaseLogHandler(logging.Handler):
     """
@@ -60,18 +83,22 @@ def setup_logging(level=logging.INFO):
     )
     
     # 2. Configure root logger
-    logging.basicConfig(
-        level=level,
-        format=log_format,
-        handlers=[
-            logging.StreamHandler(sys.stdout)
-        ]
-    )
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+    
+    # 🛡️ Apply Secret Redaction Filter
+    redactor = SecretRedactionFilter()
+    root_logger.addFilter(redactor)
+    
+    # HANDLERS
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setFormatter(logging.Formatter(log_format))
+    root_logger.addHandler(stream_handler)
     
     # 3. Add DB Handler for Errors
     db_handler = DatabaseLogHandler()
     db_handler.setLevel(logging.ERROR)
-    logging.getLogger().addHandler(db_handler)
+    root_logger.addHandler(db_handler)
     
     # 4. Silence noisy third-party libraries
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)

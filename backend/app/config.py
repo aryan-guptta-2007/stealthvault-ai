@@ -4,8 +4,13 @@ Centralized settings for the entire system.
 """
 
 import os
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from typing import Optional
+
+# Load environment variables from .env file (Option 🎯 RESULT)
+load_dotenv()
 
 
 class Settings(BaseSettings):
@@ -24,11 +29,19 @@ class Settings(BaseSettings):
     LOGS_RETENTION_DAYS: int = 7
 
     # Persistence & Messaging
-    DATABASE_URL: str = "postgresql+asyncpg://stealthadmin:stealthpassword@localhost:5432/stealthvault"
+    # Persistence & Messaging
+    DATABASE_URL: str = os.getenv("SV_DATABASE_URL", "sqlite+aiosqlite:///./stealthvault.db")
     REDIS_URL: Optional[str] = None
 
     # CORS
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: str | list[str]) -> list[str]:
+        if isinstance(v, str) and not v.startswith("["):
+            return [i.strip() for i in v.split(",")]
+        return v
 
     # AI Engine
     ANOMALY_CONTAMINATION: float = 0.1  # Expected fraction of anomalies
@@ -59,7 +72,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     JWT_ALGORITHM: str = "HS256"
-    JWT_SECRET_KEY: Optional[str] = os.getenv("SV_JWT_SECRET_KEY") or "STEALTHVAULT_DEVELOPMENT_ONLY_INSECURE_KEY"
+    JWT_SECRET_KEY: Optional[str] = os.getenv("SV_JWT_SECRET_KEY")
 
     # 🔔 External Notifications (Option 3)
     TELEGRAM_BOT_TOKEN: Optional[str] = None

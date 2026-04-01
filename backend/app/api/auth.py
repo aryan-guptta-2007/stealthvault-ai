@@ -275,6 +275,7 @@ async def login_for_access_token(
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
+@limiter.limit("3/minute")
 async def register_tenant(
     payload: RegisterInput,
     db: AsyncSession = Depends(get_db)
@@ -350,11 +351,13 @@ async def register_tenant(
         # Re-raise HTTPExceptions as they are already handled
         raise he
     except Exception as e:
-        # Log and wrap generic exceptions
-        print(f"CRITICAL ERROR in register_tenant: {e}")
+        # 🛡️ MISSION CRITICAL: Secure logging of registration failure
+        # We do NOT print raw `e` to avoid accidental password/token leaks
+        logger.error(f"❌ REGISTRATION FAULT: Onboarding failed for tenant.")
+        
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Registration failed: {str(e)}"
+            detail="Registration failed. Please contact SOC support."
         )
 
 

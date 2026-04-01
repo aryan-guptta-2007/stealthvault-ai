@@ -1,0 +1,212 @@
+﻿
+
+[33m[1m+===========================================================================================================================================================================================+[0m
+
+
+[31m[1mDEPRECATED: [0m[33m[1mthis command (`check`) has been DEPRECATED, and will be unsupported beyond 01 June 2024.[0m
+
+
+[32mWe highly encourage switching to the new [0m[32m[1m`scan`[0m[32m command which is easier to use, more powerful, and can be set up to mimic the deprecated command if required.[0m
+
+
+[33m[1m+===========================================================================================================================================================================================+[0m
+
+
++==============================================================================+
+
+                               /$$$$$$            /$$
+                              /$$__  $$          | $$
+           /$$$$$$$  /$$$$$$ | $$  \__//$$$$$$  /$$$$$$   /$$   /$$
+          /$$_____/ |____  $$| $$$$   /$$__  $$|_  $$_/  | $$  | $$
+         |  $$$$$$   /$$$$$$$| $$_/  | $$$$$$$$  | $$    | $$  | $$
+          \____  $$ /$$__  $$| $$    | $$_____/  | $$ /$$| $$  | $$
+          /$$$$$$$/|  $$$$$$$| $$    |  $$$$$$$  |  $$$$/|  $$$$$$$
+         |_______/  \_______/|__/     \_______/   \___/   \____  $$
+                                                          /$$  | $$
+                                                         |  $$$$$$/
+  by safetycli.com                                        \______/
+
++==============================================================================+
+
+ [1mANNOUNCEMENTS[0m 
+
+[33m  * Warning: wheel and scapy are unpinned. Safety by default does not report on[0m 
+[33m    potential vulnerabilities in unpinned packages. It is recommended to pin[0m 
+[33m    your dependencies unless this is a library meant for distribution. To learn[0m 
+[33m    more about reporting these, specifier range handling, and options for[0m 
+[33m    scanning unpinned packages visit https://docs.pyup.io/docs/safety-range-[0m 
+[33m    specs[0m 
+
++==============================================================================+
+
+ [1mREPORT[0m 
+
+  Safety [1mv3.7.0[0m is scanning for [1mVulnerabilities[0m[1m...[0m
+[1m  Scanning dependencies[0m in your [1mfiles:[0m
+
+  -> backend/requirements.txt
+
+  Using [1mopen-source vulnerability database[0m
+[1m  Found and scanned 26 packages[0m
+  Timestamp [1m2026-04-01 20:38:31[0m
+[1m  9[0m[1m vulnerabilities reported[0m
+[1m  4[0m[1m vulnerabilities ignored[0m
+
++==============================================================================+
+ [1mVULNERABILITIES REPORTED[0m 
++==============================================================================+
+
+[33m-> Warning: 2 known vulnerabilities match the scapy versions that could be[0m 
+[33m   installed from your specifier: scapy>=0 (unpinned). These vulnerabilities[0m 
+[33m   are not reported by default. To report these vulnerabilities set 'ignore-[0m 
+[33m   unpinned-requirements' to False under 'security' in your policy file. See[0m 
+[33m   https://docs.pyup.io/docs/safety-20-policy-file for more information.[0m 
+[33m   It is recommended to pin your dependencies unless this is a library meant[0m 
+[33m   for distribution. To learn more about reporting these, specifier range[0m 
+[33m   handling, and options for scanning unpinned packages visit[0m 
+[33m   https://docs.pyup.io/docs/safety-range-specs[0m 
+
+[33m-> Warning: 2 known vulnerabilities match the wheel versions that could be[0m 
+[33m   installed from your specifier: wheel>=0 (unpinned). These vulnerabilities[0m 
+[33m   are not reported by default. To report these vulnerabilities set 'ignore-[0m 
+[33m   unpinned-requirements' to False under 'security' in your policy file. See[0m 
+[33m   https://docs.pyup.io/docs/safety-20-policy-file for more information.[0m 
+[33m   It is recommended to pin your dependencies unless this is a library meant[0m 
+[33m   for distribution. To learn more about reporting these, specifier range[0m 
+[33m   handling, and options for scanning unpinned packages visit[0m 
+[33m   https://docs.pyup.io/docs/safety-range-specs[0m 
+
+[31m-> Vulnerability found in cryptography version 42.0.5[0m
+[1m   Vulnerability ID: [0m71681
+[1m   Affected spec: [0m<42.0.8
+[1m   ADVISORY: [0mThe `cryptography` library has updated its BoringSSL and
+   OpenSSL dependencies in CI due to a security concern. Specifically, the...
+[1m   CVE-2024-4603[0m
+[1m   For more information about this vulnerability, visit
+   [0mhttps://getsafety.com/v/71681/97c[0m
+   To ignore this vulnerability, use PyUp vulnerability id 71681 in safetyÆs
+   ignore command-line argument or add the ignore to your safety policy file.
+
+
+[31m-> Vulnerability found in cryptography version 42.0.5[0m
+[1m   Vulnerability ID: [0m71684
+[1m   Affected spec: [0m>=35.0.0,<42.0.6
+[1m   ADVISORY: [0mThe `cryptography` library updates its BoringSSL and
+   OpenSSL dependencies in CI due to a security concern. Specifically,...
+[1m   CVE-2024-2511[0m
+[1m   For more information about this vulnerability, visit
+   [0mhttps://getsafety.com/v/71684/97c[0m
+   To ignore this vulnerability, use PyUp vulnerability id 71684 in safetyÆs
+   ignore command-line argument or add the ignore to your safety policy file.
+
+
+[31m-> Vulnerability found in cryptography version 42.0.5[0m
+[1m   Vulnerability ID: [0m76170
+[1m   Affected spec: [0m>=42.0.0,<44.0.1
+[1m   ADVISORY: [0mPyca/cryptography's wheels include a statically linked
+   copy of OpenSSL. The versions of OpenSSL included in cryptography...
+[1m   CVE-2024-12797[0m
+[1m   For more information about this vulnerability, visit
+   [0mhttps://getsafety.com/v/76170/97c[0m
+   To ignore this vulnerability, use PyUp vulnerability id 76170 in safetyÆs
+   ignore command-line argument or add the ignore to your safety policy file.
+
+
+[31m-> Vulnerability found in cryptography version 42.0.5[0m
+[1m   Vulnerability ID: [0m86217
+[1m   Affected spec: [0m<46.0.5
+[1m   ADVISORY: [0mAffected versions of the cryptography package are
+   vulnerable to Improper Input Validation due to missing prime-order...
+[1m   CVE-2026-26007[0m
+[1m   For more information about this vulnerability, visit
+   [0mhttps://getsafety.com/v/86217/97c[0m
+   To ignore this vulnerability, use PyUp vulnerability id 86217 in safetyÆs
+   ignore command-line argument or add the ignore to your safety policy file.
+
+
+[31m-> Vulnerability found in cryptography version 42.0.5[0m
+[1m   Vulnerability ID: [0m73711
+[1m   Affected spec: [0m>=37.0.0,<43.0.1
+[1m   ADVISORY: [0mAffected versions of Cryptography have a vulnerable
+   statically linked copy of OpenSSL included in cryptography wheels.
+[1m   PVE-2024-73711[0m
+[1m   For more information about this vulnerability, visit
+   [0mhttps://getsafety.com/v/73711/97c[0m
+   To ignore this vulnerability, use PyUp vulnerability id 73711 in safetyÆs
+   ignore command-line argument or add the ignore to your safety policy file.
+
+
+[31m-> Vulnerability found in python-multipart version 0.0.9[0m
+[1m   Vulnerability ID: [0m85155
+[1m   Affected spec: [0m<0.0.22
+[1m   ADVISORY: [0mAffected versions of the python-multipart package are
+   vulnerable to Path Traversal due to unsafe filesystem path construction...
+[1m   CVE-2026-24486[0m
+[1m   For more information about this vulnerability, visit
+   [0mhttps://getsafety.com/v/85155/97c[0m
+   To ignore this vulnerability, use PyUp vulnerability id 85155 in safetyÆs
+   ignore command-line argument or add the ignore to your safety policy file.
+
+
+[31m-> Vulnerability found in python-multipart version 0.0.9[0m
+[1m   Vulnerability ID: [0m74427
+[1m   Affected spec: [0m<0.0.18
+[1m   ADVISORY: [0mAffected versions of python-multipart are vulnerable to
+   Allocation of Resources Without Limits or Throttling (CWE-770). An...
+[1m   CVE-2024-53981[0m
+[1m   For more information about this vulnerability, visit
+   [0mhttps://getsafety.com/v/74427/97c[0m
+   To ignore this vulnerability, use PyUp vulnerability id 74427 in safetyÆs
+   ignore command-line argument or add the ignore to your safety policy file.
+
+
+[31m-> Vulnerability found in setuptools version 68.0.0[0m
+[1m   Vulnerability ID: [0m72236
+[1m   Affected spec: [0m<70.0.0
+[1m   ADVISORY: [0mAffected versions of Setuptools allow for remote code
+   execution via its download functions. These functions, which are used...
+[1m   CVE-2024-6345[0m
+[1m   For more information about this vulnerability, visit
+   [0mhttps://getsafety.com/v/72236/97c[0m
+   To ignore this vulnerability, use PyUp vulnerability id 72236 in safetyÆs
+   ignore command-line argument or add the ignore to your safety policy file.
+
+
+[31m-> Vulnerability found in setuptools version 68.0.0[0m
+[1m   Vulnerability ID: [0m76752
+[1m   Affected spec: [0m<78.1.1
+[1m   ADVISORY: [0mAffected versions of Setuptools are vulnerable to Path
+   Traversal via PackageIndex.download(). The impact is Arbitrary File...
+[1m   CVE-2025-47273[0m
+[1m   For more information about this vulnerability, visit
+   [0mhttps://getsafety.com/v/76752/97c[0m
+   To ignore this vulnerability, use PyUp vulnerability id 76752 in safetyÆs
+   ignore command-line argument or add the ignore to your safety policy file.
+
+
++==============================================================================+
+   [32m[1mREMEDIATIONS[0m
+
+  9 vulnerabilities were reported in 3 packages. For detailed remediation & 
+  fix recommendations, upgrade to a commercial license. 
+
++==============================================================================+
+
+ Scan was completed. 9 vulnerabilities were reported. 4 vulnerabilities from 2 
+ packages were ignored. 
+
++==============================================================================+[0m
+
+
+[33m[1m+===========================================================================================================================================================================================+[0m
+
+
+[31m[1mDEPRECATED: [0m[33m[1mthis command (`check`) has been DEPRECATED, and will be unsupported beyond 01 June 2024.[0m
+
+
+[32mWe highly encourage switching to the new [0m[32m[1m`scan`[0m[32m command which is easier to use, more powerful, and can be set up to mimic the deprecated command if required.[0m
+
+
+[33m[1m+===========================================================================================================================================================================================+[0m
+
+

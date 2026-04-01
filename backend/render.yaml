@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: stealthvault-ai
+    env: docker
+    plan: free # Change to starter or higher for production use
+    region: ohio # Adjust as needed
+    envVars:
+      - key: SV_DATABASE_URL
+        sync: false
+        fromDatabase:
+          name: stealthvault-db
+          property: connectionString
+      - key: SV_JWT_SECRET_KEY
+        sync: false
+        generateValue: true
+      - key: DEBUG
+        value: false
+      - key: SV_ALLOWED_ORIGINS
+        value: "https://stealthvault-frontend.vercel.app" # Default provided by user
+      - key: DATA_DIR
+        value: /app/data
+    disk:
+      name: stealthvault-data
+      mountPath: /app/data
+      sizeGB: 1
+
+databases:
+  - name: stealthvault-db
+    plan: free
+    region: ohio
