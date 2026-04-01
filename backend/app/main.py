@@ -43,6 +43,7 @@ from app.core.batch_sqla import inspection_batcher, system_event_batcher
 
 # Import agents
 from app.agents.defender import defender_agent
+from app.core.abuse_guard import abuse_guard
 
 # Import routers
 from app.api.traffic import router as traffic_router
@@ -549,6 +550,39 @@ FRONTEND_DIR = os.path.join(settings.BASE_DIR, "..", "frontend", "dist")
 if os.path.exists(FRONTEND_DIR):
     app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIR, "assets")), name="assets")
 
+
+@app.middleware("http")
+async def abuse_protection_middleware(request: Request, call_next):
+    """
+    🛑 SELF-DEFENDING API: Active Abuse Retaliation
+    Identifies brute-force and scanning actors and triggers automated firewall exclusions.
+    """
+    client_ip = request.client.host
+    
+    # 1. PASSTHROUGH: Execute request pipeline
+    response = await call_next(request)
+    
+    # 2. ANALYSIS: Monitor for application-layer patterns (L7)
+    # Track unauthorized access, invalid tokens, forced browsing, etc.
+    if response.status_code in [400, 401, 403, 404]:
+        # 🔔 Recording failure in the mission-critical tracker
+        if abuse_guard.record_failure(client_ip):
+            # 🔥 RETALIATION: Autonomous WAF Exclusion
+            logger.critical(f"🚨 API ABUSE DETECTED: IP {client_ip} exceeded failure threshold. Triggering Automated Neutralization.")
+            
+            # WAF block for 10 minutes (duration_min=10)
+            reason = f"Automated API Abuse Exclusion (Threshold Exceeded: {response.status_code})"
+            defender_agent.waf_block(client_ip, duration_min=10, reason=reason)
+            
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "error": "SECURITY_VIOLATION",
+                    "message": "🛡️ SYSTEM RETALIATION: Your identity has been flagged for automated abuse. Access terminated."
+                }
+            )
+            
+    return response
 
 @app.middleware("http")
 async def log_requests_middleware(request: Request, call_next):
