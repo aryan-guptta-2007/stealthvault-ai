@@ -98,7 +98,7 @@ async def analyze_batch(
     for packet in packets:
         # Batch requires explicit manual invocation because FastAPI relies on Depends cache per request
         packet.tenant_id = tenant_id
-        result = await analyze_packet(packet, tenant_id)
+        result = await analyze_packet(request, packet, tenant_id)
         results.append(result)
     return {"analyzed": len(results), "alerts": results}
 

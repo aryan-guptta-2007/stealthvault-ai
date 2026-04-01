@@ -277,6 +277,7 @@ async def login_for_access_token(
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 @limiter.limit("3/minute")
 async def register_tenant(
+    request: Request,
     payload: RegisterInput,
     db: AsyncSession = Depends(get_db)
 ):
