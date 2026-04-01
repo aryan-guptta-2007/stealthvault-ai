@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     JWT_ALGORITHM: str = "HS256"
-    JWT_SECRET_KEY: str = "STEALTHVAULT_SUPER_SECRET_KEY_V1" # Move to ENV in production
+    JWT_SECRET_KEY: Optional[str] = os.getenv("SV_JWT_SECRET_KEY") or "STEALTHVAULT_DEVELOPMENT_ONLY_INSECURE_KEY"
 
     # 🔔 External Notifications (Option 3)
     TELEGRAM_BOT_TOKEN: Optional[str] = None
