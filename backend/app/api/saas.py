@@ -81,6 +81,13 @@ async def register_tenant(request: TenantRegister, db: AsyncSession = Depends(ge
         await db.commit()
         await db.refresh(new_tenant)
         
+        # ⚔️ BATTLE-MODE: Mission-Critical Hardening
+        # Registration must ONLY provision identity/tenancy.
+        # Background simulations are strictly prohibited at this boundary.
+        # trigger_simulation()    # ❌ (Disabled)
+        # run_background_attack() # ❌ (Disabled)
+        # auto_attack_daemon()    # ❌ (Disabled)
+        
         return TenantResponse(
             tenant_id=new_tenant.id,
             tenant_name=new_tenant.name,

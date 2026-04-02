@@ -220,6 +220,13 @@ async def register_tenant(
         
         await db.commit()
         
+        # ⚔️ BATTLE-MODE: Mission-Critical Hardening
+        # Registration must ONLY provision identity/tenancy.
+        # Background simulations are strictly prohibited at this boundary.
+        # trigger_simulation()    # ❌ (Disabled)
+        # run_background_attack() # ❌ (Disabled)
+        # auto_attack_daemon()    # ❌ (Disabled)
+        
         return {
             "message": "Welcome to StealthVault AI!",
             "tenant_id": new_tenant.id,
