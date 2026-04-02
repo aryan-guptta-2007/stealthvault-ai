@@ -65,7 +65,7 @@ from app.api.stats import router as stats_router
 
 from app.api.system import get_system_metrics
 import asyncio
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 # Track app start time for Elite Health Monitoring
 START_TIME = time.time()
@@ -118,6 +118,22 @@ async def refresh_threat_feed():
         # Run every 1 hour
         await asyncio.sleep(3600)
 
+async def fix_missing_columns():
+    """
+    🛠️ AUTO DB FIX: Ensures critical columns exist.
+    Runs at startup to handle schema evolutions without migrations.
+    """
+    from app.database import engine
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("""
+                ALTER TABLE alerts 
+                ADD COLUMN IF NOT EXISTS threat_source VARCHAR(50) DEFAULT 'ANALYSIS';
+            """))
+        print("  ✅ DB SCHEMA FIX: threat_source column verified")
+    except Exception as e:
+        print(f"  ❌ DB SCHEMA ERROR: {e}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application startup and shutdown events."""
@@ -139,7 +155,9 @@ async def lifespan(app: FastAPI):
     try:
         # Use the hardened init_db with retry logic
         await init_db(retries=10)
-        logger.info("PostgreSQL Database — CONNECTED")
+        # Apply schema hotfixes
+        await fix_missing_columns()
+        logger.info("PostgreSQL Database — CONNECTED & PATCHED")
     except Exception as e:
         logger.critical(f"FATAL: Database connection failed after multiple retries. ({e})")
         # In a real enterprise app, we might exit(1) here if DB is strictly required
