@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Zap, ShieldAlert, Wifi, Globe, Target, Terminal, Play } from "lucide-react";
+import { Zap, ShieldAlert, Wifi, Globe, Target, Terminal, Play, Radio, Activity, Cpu } from "lucide-react";
 import { API } from "@/lib/api";
 
 interface OffensivePanelProps {
@@ -35,70 +35,88 @@ export const OffensivePanel: React.FC<OffensivePanelProps> = ({ onAttackLaunched
   };
 
   const scenarios = [
-    { id: "ddos", name: "DDoS Flood", icon: Wifi, color: "text-red-500", border: "border-red-500/20", bg: "bg-red-500/5" },
+    { id: "ddos", name: "DDoS Flood", icon: Radio, color: "text-cyber-red", border: "border-cyber-red/20", bg: "bg-cyber-red/5" },
     { id: "brute_force", name: "Brute Force", icon: ShieldAlert, color: "text-orange-500", border: "border-orange-500/20", bg: "bg-orange-500/5" },
-    { id: "port_scan", name: "Port Scan", icon: Target, color: "text-blue-500", border: "border-blue-500/20", bg: "bg-blue-500/5" },
+    { id: "port_scan", name: "Port Scan", icon: Target, color: "text-cyber-blue", border: "border-cyber-blue/20", bg: "bg-cyber-blue/5" },
   ];
 
   return (
-    <div className="bg-gray-950 border border-gray-900 rounded-2xl p-6 relative overflow-hidden group">
-      {/* Background Grid Decoration */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#1f2937_1px,transparent_1px),linear-gradient(to_bottom,#1f2937_1px,transparent_1px)] bg-[size:14px_14px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-[0.03]"></div>
+    <div className="glass-card p-10 relative overflow-hidden group border-white/5 bg-black/40">
+      {/* Background Decorative Element */}
+      <div className="absolute top-0 right-0 p-10 opacity-[0.02] pointer-events-none group-hover:opacity-[0.05] transition-opacity">
+        <Target className="w-40 h-40 text-cyber-red rotate-12" />
+      </div>
 
-      <div className="flex items-center justify-between mb-8 relative z-10">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-red-600/10 border border-red-500/20 flex items-center justify-center">
-            <Zap className="w-5 h-5 text-red-500" />
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-10 relative z-10 gap-6">
+        <div className="flex items-center gap-5">
+          <div className="w-14 h-14 rounded-2xl bg-cyber-red/10 border border-cyber-red/20 flex items-center justify-center shadow-[0_0_20px_rgba(239,68,68,0.1)] group-hover:scale-110 transition-transform">
+            <Zap className="w-6 h-6 text-cyber-red animate-pulse" />
           </div>
           <div>
-            <h2 className="text-sm font-black tracking-tighter uppercase italic">Combat Simulator</h2>
-            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Node: ALPHA-NODE-01</p>
+            <h2 className="text-xl font-black tracking-tighter uppercase italic text-glow-red">COMBAT SIMULATOR.</h2>
+            <p className="text-[10px] text-gray-500 uppercase tracking-[0.4em] font-black mt-1">OFFENSIVE NODE: ALPHA-IX</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 p-1 bg-black/40 border border-gray-900 rounded-lg">
+        <div className="flex items-center gap-3 p-1.5 bg-black/60 border border-white/5 rounded-2xl">
           <button 
             onClick={() => setIntensity("medium")}
-            className={`px-3 py-1 text-[10px] font-black uppercase rounded-md transition-all ${intensity === "medium" ? "bg-gray-800 text-white shadow-lg" : "text-gray-600 hover:text-gray-400"}`}
+            className={`px-5 py-2 text-[10px] font-black uppercase rounded-xl transition-all ${intensity === "medium" ? "bg-white/10 text-white shadow-xl" : "text-gray-600 hover:text-gray-400"}`}
           >
             Medium
           </button>
           <button 
             onClick={() => setIntensity("high")}
-            className={`px-3 py-1 text-[10px] font-black uppercase rounded-md transition-all ${intensity === "high" ? "bg-red-600 text-white shadow-[0_0_15px_rgba(220,38,38,0.3)]" : "text-gray-600 hover:text-red-900"}`}
+            className={`px-5 py-2 text-[10px] font-black uppercase rounded-xl transition-all ${intensity === "high" ? "bg-cyber-red text-white shadow-[0_0_25px_rgba(239,68,68,0.4)]" : "text-gray-600 hover:text-cyber-red"}`}
           >
-            High
+            High Power
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 relative z-10">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative z-10">
         {scenarios.map((s) => (
           <button
             key={s.id}
             disabled={loading}
             onClick={() => launchAttack(s.id)}
-            className={`group relative flex flex-col items-center justify-center gap-4 p-6 rounded-2xl border ${s.border} ${s.bg} hover:scale-[1.02] active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:pointer-events-none overflow-hidden`}
+            className={`group/btn relative flex flex-col items-center justify-center gap-5 p-8 rounded-[2rem] border ${s.border} ${s.bg} hover:border-white/20 transition-all duration-500 disabled:opacity-50 disabled:pointer-events-none overflow-hidden hover:shadow-[0_0_40px_rgba(0,0,0,0.4)]`}
           >
-            <div className={`p-4 rounded-xl bg-black/40 border ${s.border} shadow-lg transition-transform group-hover:rotate-12`}>
+            {/* Scanline Effect */}
+            <div className="absolute inset-0 bg-cyber-red/5 opacity-0 group-hover/btn:opacity-100 transition-opacity cyber-scanline pointer-events-none"></div>
+            
+            <div className={`p-5 rounded-2xl bg-black/60 border ${s.border} shadow-2xl transition-all duration-500 group-hover/btn:scale-110 group-hover/btn:-rotate-6`}>
               <s.icon className={`w-8 h-8 ${s.color}`} />
             </div>
-            <span className={`text-[11px] font-black uppercase tracking-widest ${s.color}`}>
-              {s.name}
-            </span>
+            <div className="text-center">
+                <span className={`text-xs font-black uppercase tracking-[0.3em] ${s.color}`}>
+                {s.name}
+                </span>
+                <p className="text-[8px] text-gray-600 font-bold uppercase tracking-[0.5em] mt-2 group-hover/btn:text-white transition-colors">Initialize Sequence</p>
+            </div>
             
-            {/* Hover Glitch Effect */}
-            <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
+            {/* Action Bar */}
+            <div className="absolute bottom-4 opacity-0 group-hover/btn:opacity-100 transition-all translate-y-2 group-hover/btn:translate-y-0 text-[8px] font-mono font-black text-white/40">
+                READY // EXECUTE
+            </div>
           </button>
         ))}
       </div>
 
       {status && (
-        <div className="mt-6 p-3 bg-black/60 border border-gray-900 rounded-xl flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300 relative z-10">
-          <Terminal className="w-4 h-4 text-gray-400" />
-          <p className="text-[10px] font-mono text-gray-400 whitespace-nowrap overflow-hidden">
-            <span className="text-red-500 font-bold">$ </span>{status}
-          </p>
+        <div className="mt-8 p-4 bg-black/80 border border-white/5 rounded-2xl flex items-center gap-4 animate-in slide-in-from-bottom-5 duration-500 relative z-10">
+          <div className="w-8 h-8 rounded-lg bg-cyber-red/10 flex items-center justify-center">
+            <Terminal className="w-4 h-4 text-cyber-red" />
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+                <div className="w-1 h-1 bg-cyber-red rounded-full animate-ping"></div>
+                <span className="text-[8px] font-black text-cyber-red uppercase tracking-widest">Live Execution Terminal</span>
+            </div>
+            <p className="text-[10px] font-mono text-gray-400">
+                <span className="text-cyber-red font-black">$ </span>{status}
+            </p>
+          </div>
         </div>
       )}
     </div>

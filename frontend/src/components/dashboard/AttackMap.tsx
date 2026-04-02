@@ -9,6 +9,7 @@ import {
   Sphere,
   Graticule,
 } from "react-simple-maps";
+import { Radio } from "lucide-react";
 
 // World TopoJSON - using 110m resolution for performance
 const geoUrl = "https://unpkg.com/world-atlas@2.0.2/countries-110m.json";
@@ -51,25 +52,28 @@ const AttackMap: React.FC<AttackMapProps> = ({ alerts }) => {
   }, [alerts]);
 
   return (
-    <div className="relative w-full h-[400px] bg-black/40 rounded-3xl border border-gray-800 shadow-2xl overflow-hidden group">
-      {/* Background Grid/Effect */}
-      <div className="absolute inset-0 opacity-10 pointer-events-none bg-[radial-gradient(#ef4444_1px,transparent_1px)] [background-size:20px_20px]"></div>
+    <div className="glass-card w-full h-[450px] bg-black/40 border-white/5 relative overflow-hidden group">
+      {/* Background Decorative Grid */}
+      <div className="absolute inset-0 opacity-[0.03] pointer-events-none cyber-grid-small"></div>
       
-      <div className="absolute top-6 left-8 z-10">
-        <h2 className="text-lg font-black tracking-tighter uppercase italic flex items-center gap-2">
-           <span className="text-red-500 animate-pulse">🌍</span> Global Threat Matrix
-        </h2>
-        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Real-Time Origin Tracking</p>
+      <div className="absolute top-8 left-10 z-10 flex items-center gap-4">
+        <div className="p-2 bg-cyber-red/10 border border-cyber-red/20 rounded-lg">
+            <Radio className="w-4 h-4 text-cyber-red animate-pulse" />
+        </div>
+        <div>
+            <h2 className="text-sm font-black tracking-tighter uppercase italic text-glow-red">GLOBAL THREAT MATRIX.</h2>
+            <p className="text-[10px] text-gray-500 font-black uppercase tracking-[0.4em] mt-1">Origin Node Tracking // REAL-TIME</p>
+        </div>
       </div>
 
       <ComposableMap
         projection="geoEqualEarth"
-        height={400}
-        projectionConfig={{ scale: 160 }}
+        height={450}
+        projectionConfig={{ scale: 180 }}
         style={{ width: "100%", height: "100%" }}
       >
-        <Sphere stroke="#1f2937" strokeWidth={0.5} id="sphere" fill="transparent" />
-        <Graticule stroke="#1f2937" strokeWidth={0.5} />
+        <Sphere stroke="rgba(255,255,255,0.05)" strokeWidth={0.5} id="sphere" fill="transparent" />
+        <Graticule stroke="rgba(255,255,255,0.05)" strokeWidth={0.5} />
         
         <Geographies geography={geoUrl}>
           {({ geographies }: { geographies: any[] }) =>
@@ -77,12 +81,12 @@ const AttackMap: React.FC<AttackMapProps> = ({ alerts }) => {
               <Geography
                 key={geo.rsmKey}
                 geography={geo}
-                fill="#111827"
-                stroke="#1f2937"
+                fill="#0a0a0a"
+                stroke="rgba(255,255,255,0.05)"
                 strokeWidth={0.5}
                 style={{
                   default: { outline: "none" },
-                  hover: { fill: "#ef444410", outline: "none", transition: "all 0.3s" },
+                  hover: { fill: "rgba(239, 68, 68, 0.05)", stroke: "rgba(239, 68, 68, 0.2)", outline: "none", transition: "all 0.3s" },
                   pressed: { outline: "none" },
                 }}
               />
@@ -94,15 +98,16 @@ const AttackMap: React.FC<AttackMapProps> = ({ alerts }) => {
           <Marker key={id} coordinates={coordinates}>
             {/* Pulsing Ripple Effect */}
             <circle
-              r={severity === "critical" ? 8 : 5}
-              fill="rgba(239, 68, 68, 0.4)"
+              r={severity === "critical" ? 10 : 6}
+              fill="rgba(239, 68, 68, 0.3)"
               className="animate-ping"
             />
             {/* Solid Center */}
             <circle
-              r={severity === "critical" ? 3 : 2}
+              r={severity === "critical" ? 4 : 3}
               fill="#ef4444"
-              className={severity === "critical" ? "shadow-[0_0_10px_red]" : ""}
+              className={severity === "critical" ? "shadow-[0_0_15px_red]" : ""}
+              style={{ filter: severity === "critical" ? "drop-shadow(0 0 8px #ef4444)" : "" }}
             >
                 <title>{label}</title>
             </circle>
@@ -111,20 +116,20 @@ const AttackMap: React.FC<AttackMapProps> = ({ alerts }) => {
       </ComposableMap>
 
       {/* Map Legend */}
-      <div className="absolute bottom-6 right-8 flex items-center gap-6 z-10 bg-black/60 backdrop-blur-md p-3 rounded-2xl border border-gray-800">
-         <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_red]"></div>
-            <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter">Critical</span>
+      <div className="absolute bottom-8 right-10 flex items-center gap-8 z-10 bg-black/60 backdrop-blur-xl px-6 py-3 rounded-2xl border border-white/5 shadow-2xl">
+         <div className="flex items-center gap-3 group">
+            <div className="w-2.5 h-2.5 rounded-full bg-cyber-red shadow-[0_0_10px_rgba(239,68,68,0.8)] transition-transform group-hover:scale-125"></div>
+            <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest group-hover:text-white transition-colors">Critical</span>
          </div>
-         <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-orange-500"></div>
-            <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter">Anomalous</span>
+         <div className="flex items-center gap-3 group">
+            <div className="w-2.5 h-2.5 rounded-full bg-orange-500 transition-transform group-hover:scale-125"></div>
+            <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest group-hover:text-white transition-colors">Anomalous</span>
          </div>
-         <div className="flex items-center gap-2">
-            <div className="w-10 h-0.5 bg-gray-800 rounded-full overflow-hidden">
-               <div className="h-full bg-red-600 animate-pulse w-full"></div>
+         <div className="flex items-center gap-4">
+            <div className="w-12 h-1 bg-white/5 rounded-full overflow-hidden border border-white/5">
+               <div className="h-full bg-cyber-red animate-pulse w-full shadow-[0_0_10px_red]"></div>
             </div>
-            <span className="text-[10px] font-black text-red-600 uppercase tracking-widest animate-pulse">Live Link</span>
+            <span className="text-[10px] font-black text-cyber-red uppercase tracking-[0.3em] animate-pulse">Live Link</span>
          </div>
       </div>
     </div>

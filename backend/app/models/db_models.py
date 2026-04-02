@@ -62,6 +62,7 @@ class DBAlert(Base):
     attack_type = Column(String(50), index=True)
     risk_score = Column(Float)
     severity = Column(String(20), index=True)
+    threat_source = Column(String(50), default="ANALYSIS")
     
     packet_data = Column(JSON)
     anomaly_data = Column(JSON)

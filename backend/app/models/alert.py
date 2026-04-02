@@ -151,6 +151,7 @@ class ThreatAlert(BaseModel):
     anomaly: AnomalyResult
     classification: ClassificationResult
     risk: RiskScore
+    threat_source: str = Field("ANALYSIS", max_length=20)
     brain_analysis: Optional[BrainAnalysis] = None
 
     class Config(SafeConfig):

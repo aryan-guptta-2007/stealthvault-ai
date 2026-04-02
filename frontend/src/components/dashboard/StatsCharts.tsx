@@ -30,68 +30,98 @@ export const StatsCharts: React.FC<StatsChartsProps> = ({ distribution }) => {
   ];
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 mb-12">
       {/* THREAT DISTRIBUTION */}
-      <div className="bg-gray-900/40 p-6 rounded-3xl border border-gray-800 shadow-xl group hover:border-gray-700 transition-all">
-        <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 mb-6">Threat Distribution</h3>
-        <div className="h-[250px] w-full">
+      <div className="glass-card p-10 border-white/5 bg-black/40 relative overflow-hidden group">
+        <div className="flex items-center justify-between mb-8">
+            <h3 className="text-xs font-black uppercase tracking-[0.4em] text-gray-500 italic">Threat Distribution.</h3>
+            <div className="w-1.5 h-1.5 bg-cyber-red rounded-full animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.8)]"></div>
+        </div>
+        <div className="h-[280px] w-full relative">
+          {/* Decorative Ring */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 border border-white/5 rounded-full pointer-events-none"></div>
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
                 data={data}
                 cx="50%"
                 cy="50%"
-                innerRadius={60}
-                outerRadius={80}
-                paddingAngle={5}
+                innerRadius={70}
+                outerRadius={95}
+                paddingAngle={8}
                 dataKey="value"
                 stroke="none"
               >
                 {data.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} opacity={0.8} />
+                  <Cell 
+                    key={`cell-${index}`} 
+                    fill={COLORS[index % COLORS.length]} 
+                    className="hover:opacity-100 transition-opacity cursor-pointer shadow-lg"
+                    style={{ filter: `drop-shadow(0 0 10px ${COLORS[index % COLORS.length]}44)` }}
+                  />
                 ))}
               </Pie>
               <Tooltip 
-                contentStyle={{ backgroundColor: "#000", border: "1px solid #333", borderRadius: "10px", fontSize: "10px", fontWeight: "bold" }}
+                contentStyle={{ backgroundColor: "#0a0a0a", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "16px", fontSize: "10px", fontWeight: "900", textTransform: "uppercase", letterSpacing: "0.1em" }}
                 itemStyle={{ color: "#fff" }}
+                cursor={false}
               />
             </PieChart>
           </ResponsiveContainer>
         </div>
-        <div className="grid grid-cols-2 gap-4 mt-6">
+        <div className="grid grid-cols-2 gap-6 mt-10 p-4 bg-white/[0.02] rounded-2xl border border-white/5">
             {data.map((entry, index) => (
-                <div key={entry.name} className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{entry.name}: {entry.value}</span>
+                <div key={entry.name} className="flex items-center gap-3 group/item">
+                    <div className="w-3 h-3 rounded-full shadow-lg transition-transform group-hover/item:scale-125" style={{ backgroundColor: COLORS[index % COLORS.length], boxShadow: `0 0 15px ${COLORS[index % COLORS.length]}66` }}></div>
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest group-hover/item:text-white transition-colors">{entry.name}: {entry.value}</span>
                 </div>
             ))}
         </div>
       </div>
 
       {/* RISK HISTORY */}
-      <div className="bg-gray-900/40 p-6 rounded-3xl border border-gray-800 shadow-xl group hover:border-gray-700 transition-all">
-        <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 mb-6">24H Threat Vector Trend</h3>
-        <div className="h-[250px] w-full">
+      <div className="glass-card p-10 border-white/5 bg-black/40 relative overflow-hidden group">
+        <div className="flex items-center justify-between mb-8">
+            <h3 className="text-xs font-black uppercase tracking-[0.4em] text-gray-500 italic">Live Threat Vector Trend.</h3>
+            <div className="text-[8px] font-black uppercase tracking-[0.2em] text-cyber-red animate-pulse">24H CYCLE</div>
+        </div>
+        <div className="h-[280px] w-full">
            <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={trendData}>
                 <defs>
                   <linearGradient id="colorRisk" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3}/>
+                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.4}/>
                     <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" vertical={false} />
-                <XAxis dataKey="time" stroke="#4b5563" fontSize={10} tickLine={false} axisLine={false} />
-                <YAxis stroke="#4b5563" fontSize={10} tickLine={false} axisLine={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
+                <XAxis dataKey="time" stroke="rgba(255,255,255,0.2)" fontSize={9} tickLine={false} axisLine={false} tick={{ fontWeight: 900 }} dy={10} />
+                <YAxis stroke="rgba(255,255,255,0.2)" fontSize={9} tickLine={false} axisLine={false} tick={{ fontWeight: 900 }} dx={-10} />
                 <Tooltip 
-                   contentStyle={{ backgroundColor: "#000", border: "1px solid #333", borderRadius: "10px", fontSize: "10px", fontWeight: "bold" }}
+                   contentStyle={{ backgroundColor: "#0a0a0a", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "16px", fontSize: "10px", fontWeight: "900", textTransform: "uppercase", letterSpacing: "0.1em" }}
                    itemStyle={{ color: "#fff" }}
                 />
-                <Area type="monotone" dataKey="risk" stroke="#ef4444" fillOpacity={1} fill="url(#colorRisk)" strokeWidth={3} />
+                <Area 
+                    type="monotone" 
+                    dataKey="risk" 
+                    stroke="#ef4444" 
+                    fillOpacity={1} 
+                    fill="url(#colorRisk)" 
+                    strokeWidth={4} 
+                    dot={{ fill: "#ef4444", r: 4, strokeWidth: 0 }}
+                    activeDot={{ r: 8, stroke: "#fff", strokeWidth: 2 }}
+                />
               </AreaChart>
            </ResponsiveContainer>
         </div>
-        <p className="text-[10px] text-gray-600 mt-4 italic">* Simulated trend data based on historical heuristics.</p>
+        <div className="mt-10 pt-6 border-t border-white/5 flex items-center justify-between">
+            <p className="text-[10px] text-gray-700 font-black uppercase tracking-widest italic flex items-center gap-2">
+                <span className="w-2 h-2 bg-gray-800 rounded-full"></span> Simulation Layer Active
+            </p>
+            <div className="w-16 h-1 bg-white/5 rounded-full overflow-hidden">
+                <div className="h-full bg-cyber-red w-3/4 animate-pulse"></div>
+            </div>
+        </div>
       </div>
     </div>
   );

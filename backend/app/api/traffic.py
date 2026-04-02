@@ -27,6 +27,8 @@ from app.agents.orchestrator import soc_orchestrator
 from app.services.simulator import attack_simulator
 from app.api.auth import get_current_user, get_optional_user
 from app.api.rbac import RoleChecker
+from app.services.threat_intel import is_malicious
+from app.models.alert import BrainAnalysis
 
 router = APIRouter(prefix="/traffic", tags=["Traffic Analysis"])
 
@@ -66,6 +68,25 @@ async def analyze_packet(
     # Use the full SOC pipeline
     soc_verdict = await soc_orchestrator.process(packet)
 
+    # 🌍 Threat Intelligence Overlays
+    threat_intel_match = is_malicious(packet.src_ip)
+    
+    if threat_intel_match:
+        # Override severity and risk for known malicious IPs
+        soc_verdict.detection.is_threat = True
+        soc_verdict.detection.risk.score = 1.0
+        soc_verdict.detection.risk.severity = Severity.CRITICAL
+        
+        # Inject Threat Intel context into Brain Analysis
+        intel_brain = BrainAnalysis(
+            attack_name="Malicious IP Match",
+            description=f"Source IP {packet.src_ip} is flagged in real-time threat intelligence feeds (Threat Intel Blacklist).",
+            recommended_actions=["Immediate firewall block", "Inspect destination traffic for exfiltration"]
+        )
+        
+        if soc_verdict.intelligence:
+            soc_verdict.intelligence.brain_analysis = intel_brain
+        
     # Construct the ThreatAlert for the response
     alert = ThreatAlert(
         id=soc_verdict.detection.packet.id,
@@ -74,8 +95,12 @@ async def analyze_packet(
         anomaly=soc_verdict.detection.anomaly,
         classification=soc_verdict.detection.classification,
         risk=soc_verdict.detection.risk,
-        brain_analysis=soc_verdict.intelligence.brain_analysis if soc_verdict.intelligence else None,
+        threat_source="THREAT_INTEL" if threat_intel_match else "ANALYSIS",
+        brain_analysis=soc_verdict.intelligence.brain_analysis if (soc_verdict.intelligence and soc_verdict.intelligence.brain_analysis) else None,
     )
+
+    if threat_intel_match and not alert.brain_analysis:
+         alert.brain_analysis = intel_brain
 
     # Store in-memory for legacy /stats compatibility (optional, since we have DB now)
     if soc_verdict.detection.is_threat:

@@ -8,7 +8,11 @@ import { BrainPanel } from "@/components/dashboard/BrainPanel";
 import AttackMap from "@/components/dashboard/AttackMap";
 import { OffensivePanel } from "@/components/dashboard/OffensivePanel";
 import { QuarantineTable } from "@/components/dashboard/QuarantineTable";
-import { Activity, Shield, AlertTriangle, Cpu, Terminal, LogOut, Server } from "lucide-react";
+import { TerminalLogs } from "@/components/dashboard/TerminalLogs";
+import { Activity, Shield, AlertTriangle, Cpu, Terminal, LogOut, Server, ChevronRight, Zap, Radio, Target, Bell, Brain } from "lucide-react";
+import { Logo } from "@/components/Logo";
+import Link from "next/link";
+import { OnboardingModal } from "@/components/dashboard/OnboardingModal";
 
 interface BrainAnalysis {
   attack_name: string;
@@ -31,7 +35,7 @@ interface AlertData {
 }
 
 export default function Dashboard() {
-  const router = useRouter(); // 🚀 Next.js Navigation
+  const router = useRouter();
   const [status, setStatus] = useState("Loading...");
   const [events, setEvents] = useState<string[]>([]);
   const [rawAlerts, setRawAlerts] = useState<AlertData[]>([]);
@@ -42,24 +46,25 @@ export default function Dashboard() {
   const [isBrainOpen, setIsBrainOpen] = useState(false);
   const [brainLoading, setBrainLoading] = useState(false);
 
+  // Onboarding & Demo State
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [demoIntervalId, setDemoIntervalId] = useState<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
-    // 🔐 PROTECT DASHBOARD: Guard unauthorized access
     const token = localStorage.getItem("access_token") || localStorage.getItem("token");
 
     if (!token) {
-      console.log("No authorization token detected. Redirecting to login...");
       router.push("/login");
       return;
     }
 
-    // Initial Stats Fetch
     const fetchDashboardData = async () => {
       try {
         const statsRes = await API.get("/api/v1/dashboard/");
         setStats(statsRes.data);
         setStatus(statsRes.data.system_status.toLowerCase());
 
-        // 🔥 HISTORICAL SYNC: Get previous alerts for SOC feed
         const alertsRes = await API.get("/api/v1/alerts/", { params: { limit: 20 } });
         setRawAlerts(alertsRes.data);
       } catch (err) {
@@ -68,23 +73,31 @@ export default function Dashboard() {
     };
 
     fetchDashboardData();
-
-    // 🔥 AUTO-REFRESH: Polling fallback every 5 seconds for stats
     const interval = setInterval(fetchDashboardData, 5000);
 
-    // 🔥 WEBSOCKET: Real-time event stream
-    const ws = new WebSocket("wss://stealthvault-ai.onrender.com/ws");
+    // Initial Onboarding Check
+    const hasVisited = localStorage.getItem("sv_onboarded");
+    if (!hasVisited) {
+      setShowOnboarding(true);
+    }
+
+    const ws_url = process.env.NEXT_PUBLIC_WS_URL || "wss://stealthvault-ai.onrender.com/ws";
+    const ws = new WebSocket(ws_url);
 
     ws.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data);
         
         if (payload.type === "ALERT") {
+          // If we receive a real alert, disable demo mode
+          setIsDemoMode(false);
+          if (demoIntervalId) clearInterval(demoIntervalId);
+
           const alert = payload.data;
           const msg = `🚨 [${alert.risk.severity.toUpperCase()}] ${alert.classification.attack_type} intercepted from ${alert.packet.src_ip}`;
           
           setEvents((prev) => [msg, ...prev.slice(0, 19)]);
-          setRawAlerts((prev) => [alert, ...prev.slice(0, 19)]); // Prepend new alerts
+          setRawAlerts((prev) => [alert, ...prev.slice(0, 19)]);
         } else if (payload.type === "STATS_UPDATE") {
            setStats(payload.data);
         }
@@ -96,8 +109,71 @@ export default function Dashboard() {
     return () => {
       clearInterval(interval);
       ws.close();
+      if (demoIntervalId) clearInterval(demoIntervalId);
     };
-  }, [router]);
+  }, [router, demoIntervalId]);
+
+  // Demo Mode Simulation Logic
+  useEffect(() => {
+    if (rawAlerts.length === 0 && !isDemoMode) {
+      const timer = setTimeout(() => {
+        setIsDemoMode(true);
+        startSimulation();
+      }, 3000); // Wait 3s before starting demo
+      return () => clearTimeout(timer);
+    }
+  }, [rawAlerts]);
+
+  const startSimulation = () => {
+    const mockAlerts = [
+      {
+        id: "sim-1",
+        timestamp: new Date().toISOString(),
+        packet: { src_ip: "185.220.101.44", dst_port: 80 },
+        classification: { attack_type: "SQL Injection" },
+        risk: { score: 0.92, severity: "critical" },
+        geo_location: { country: "Russia" },
+        anomaly: { confidence: 0.98 }
+      },
+      {
+        id: "sim-2",
+        timestamp: new Date().toISOString(),
+        packet: { src_ip: "45.146.165.37", dst_port: 443 },
+        classification: { attack_type: "DDoS Flood" },
+        risk: { score: 0.85, severity: "high" },
+        geo_location: { country: "Ukraine" },
+        anomaly: { confidence: 0.91 }
+      },
+      {
+        id: "sim-3",
+        timestamp: new Date().toISOString(),
+        packet: { src_ip: "103.255.44.12", dst_port: 22 },
+        classification: { attack_type: "SSH Brute-Force" },
+        risk: { score: 0.78, severity: "high" },
+        geo_location: { country: "China" },
+        anomaly: { confidence: 0.88 }
+      }
+    ];
+
+    let i = 0;
+    const id = setInterval(() => {
+      const alert = mockAlerts[i % mockAlerts.length];
+      const newAlert = { ...alert, timestamp: new Date().toISOString(), id: `sim-${Date.now()}` };
+      
+      const msg = `🚀 [DEMO-ACTIVE] [${newAlert.risk.severity.toUpperCase()}] ${newAlert.classification.attack_type} intercepted (Simulation)`;
+      
+      setEvents((prev) => [msg, ...prev.slice(0, 19)]);
+      setRawAlerts((prev) => [newAlert, ...prev.slice(0, 19)]);
+      i++;
+    }, 4000);
+
+    setDemoIntervalId(id);
+  };
+
+  const handleOnboardingComplete = () => {
+    localStorage.setItem("sv_onboarded", "true");
+    setShowOnboarding(false);
+  };
 
   const handleAlertClick = async (alertId: string) => {
     setBrainLoading(true);
@@ -113,20 +189,26 @@ export default function Dashboard() {
   };
 
   const handleLogout = () => {
-    console.log("Logging out of StealthVault...");
-    localStorage.clear(); // 🧹 FULL SESSION WIPE
+    localStorage.clear();
     router.push("/login");
   };
 
   if (!stats) return (
-    <div className="min-h-screen bg-black flex flex-col items-center justify-center space-y-4">
-        <div className="w-10 h-10 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-[10px] font-black tracking-widest uppercase text-red-500 animate-pulse">Initializing Neural Link...</p>
+    <div className="min-h-screen bg-cyber-black flex flex-col items-center justify-center space-y-6 cyber-grid">
+        <div className="relative">
+            <div className="w-16 h-16 border-2 border-cyber-red border-t-transparent rounded-full animate-spin"></div>
+            <div className="absolute inset-0 border-2 border-cyber-blue border-b-transparent rounded-full animate-spin-reverse opacity-50"></div>
+        </div>
+        <p className="text-[10px] font-black tracking-[0.5em] uppercase text-cyber-red animate-pulse italic">Connecting to SOC Node Alpha-1...</p>
     </div>
   );
 
   return (
-    <div className="flex min-h-screen bg-black text-white font-mono selection:bg-red-500/30">
+    <div className="flex min-h-screen bg-cyber-black text-white font-sans selection:bg-cyber-red/30 cyber-grid">
+      <div className="fixed inset-0 pointer-events-none opacity-20">
+          <div className="absolute top-0 left-0 w-full h-[2px] bg-cyber-red animate-scanline"></div>
+      </div>
+
       <BrainPanel 
         isOpen={isBrainOpen} 
         onCloseAction={() => setIsBrainOpen(false)} 
@@ -134,204 +216,234 @@ export default function Dashboard() {
         loading={brainLoading}
       />
 
+      {showOnboarding && <OnboardingModal onCloseAction={handleOnboardingComplete} />}
+
       {/* SIDEBAR */}
-      <div className="w-72 bg-gray-950 border-r border-gray-800 flex flex-col p-6 sticky top-0 h-screen z-40">
-        <div className="flex items-center gap-3 mb-12 group cursor-default">
-          <div className="bg-red-600 w-8 h-8 rounded flex items-center justify-center shadow-[0_0_15px_rgba(220,38,38,0.5)] group-hover:scale-110 transition-transform">
-            <Shield className="w-5 h-5 text-white" />
-          </div>
-          <h2 className="text-xl font-black tracking-tighter uppercase italic text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-500">
-            STEALTHVAULT
-          </h2>
+      <div className="w-80 bg-black/80 border-r border-white/5 flex flex-col p-8 sticky top-0 h-screen z-40 backdrop-blur-3xl">
+        <div className="mb-16">
+            <Logo />
         </div>
 
-        <nav className="flex-1">
-          <ul className="space-y-2">
-            <li className="flex items-center gap-3 p-3 bg-red-600/10 text-red-500 rounded-xl border border-red-600/20 cursor-default">
-              <Activity className="w-4 h-4" /> Dashboard
-            </li>
-            <li className="flex items-center gap-3 p-3 text-gray-500 hover:text-gray-300 hover:bg-gray-900 rounded-xl cursor-not-allowed transition-all group">
-              <AlertTriangle className="w-4 h-4" /> Threats <span className="text-[10px] bg-gray-800 px-1.5 rounded ml-auto">PRO</span>
-            </li>
-            <li className="flex items-center gap-3 p-3 text-gray-500 hover:text-gray-300 hover:bg-gray-900 rounded-xl cursor-not-allowed transition-all group">
-              <Cpu className="w-4 h-4" /> Agents <span className="text-[10px] bg-gray-800 px-1.5 rounded ml-auto">PRO</span>
-            </li>
-          </ul>
+        <nav className="flex-1 space-y-12">
+          <div className="space-y-4">
+              <h3 className="text-[10px] font-black text-gray-600 uppercase tracking-[0.5em] mb-6">Operations</h3>
+              <ul className="space-y-3">
+                <li className="flex items-center gap-3 p-4 bg-cyber-red text-white rounded-xl shadow-[0_0_20px_rgba(239,68,68,0.2)] font-black uppercase italic tracking-widest text-[10px]">
+                  <Activity className="w-4 h-4" /> Global Dashboard
+                </li>
+                <li className="flex items-center gap-3 p-4 text-gray-500 hover:text-white transition-all group cursor-pointer border border-transparent hover:border-white/5 rounded-xl">
+                  <Target className="w-4 h-4 group-hover:text-cyber-red" /> 
+                  <span className="text-[10px] font-black uppercase tracking-widest italic group-hover:italic group-hover:translate-x-1 transition-transform">Target Intel</span>
+                  <span className="ml-auto text-[8px] bg-white/5 px-2 py-0.5 rounded text-gray-600 font-bold uppercase italic group-hover:bg-cyber-red group-hover:text-white">PRO</span>
+                </li>
+                <li className="flex items-center gap-3 p-4 text-gray-500 hover:text-white transition-all group cursor-pointer border border-transparent hover:border-white/5 rounded-xl">
+                  <Radio className="w-4 h-4 group-hover:text-cyber-blue" />
+                  <span className="text-[10px] font-black uppercase tracking-widest italic group-hover:translate-x-1 transition-transform">Nodes</span>
+                  <span className="ml-auto text-[8px] bg-white/5 px-2 py-0.5 rounded text-gray-600 font-bold uppercase italic group-hover:border-cyber-blue group-hover:text-white">PRO</span>
+                </li>
+              </ul>
+          </div>
+
+          <div className="space-y-4">
+              <h3 className="text-[10px] font-black text-gray-600 uppercase tracking-[0.5em] mb-6">Active Channels</h3>
+              <div className="space-y-3">
+                  <div className="flex items-center gap-4 p-4 glass-card border-white/5 group">
+                      <div className="w-2 h-2 rounded-full bg-cyber-blue shadow-[0_0_10px_rgba(59,130,246,0.5)] animate-pulse"></div>
+                      <span className="text-[10px] font-black text-gray-400 group-hover:text-white uppercase tracking-widest">Telegram SOC</span>
+                      <Shield className="w-3 h-3 ml-auto text-gray-700 group-hover:text-cyber-blue transition-colors" />
+                  </div>
+                  <div className="flex items-center gap-4 p-4 glass-card border-white/5 group opacity-50 grayscale hover:grayscale-0 hover:opacity-100 transition-all">
+                      <div className="w-2 h-2 rounded-full bg-cyber-red shadow-[0_0_10px_rgba(239,68,68,0.5)] animate-pulse"></div>
+                      <span className="text-[10px] font-black text-gray-400 group-hover:text-white uppercase tracking-widest">SIEM Stream</span>
+                      <Terminal className="w-3 h-3 ml-auto text-gray-700 group-hover:text-cyber-red transition-colors" />
+                  </div>
+              </div>
+          </div>
         </nav>
 
-        <div className="mt-8 pt-6 border-t border-gray-900 overflow-hidden">
-           <h3 className="text-[10px] font-black text-gray-600 uppercase tracking-widest mb-4">Live Alert Channels</h3>
-           <div className="space-y-3">
-              <div className="flex items-center gap-3 p-2.5 bg-gray-900/30 rounded-xl border border-gray-900 hover:border-blue-500/10 transition-all group">
-                 <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)] animate-pulse"></div>
-                 <span className="text-[10px] font-bold text-gray-400 group-hover:text-blue-400 transition-colors">Telegram BOT</span>
-                 <span className="ml-auto text-[8px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded-full font-black uppercase italic">Active</span>
-              </div>
-              <div className="flex items-center gap-3 p-2.5 bg-gray-900/30 rounded-xl border border-gray-900 hover:border-purple-500/10 transition-all group">
-                 <div className="w-2 h-2 rounded-full bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.5)] animate-pulse"></div>
-                 <span className="text-[10px] font-bold text-gray-400 group-hover:text-purple-400 transition-colors">Slack SOC</span>
-                 <span className="ml-auto text-[8px] bg-purple-500/10 text-purple-500 px-1.5 py-0.5 rounded-full font-black uppercase italic">Active</span>
-              </div>
+        <div className="mt-auto pt-8 border-t border-white/5 space-y-6">
+           <div className="p-4 glass-card border-cyber-red/20 bg-cyber-red/5">
+                <p className="text-[8px] font-black uppercase text-cyber-red tracking-[0.3em] mb-1">Account Standing</p>
+                <div className="flex justify-between items-end">
+                    <p className="text-xs font-black italic tracking-tighter uppercase">Free Beta</p>
+                    <Link href="/pricing" className="text-[8px] text-white bg-cyber-red px-2 py-0.5 rounded uppercase font-black tracking-widest hover:bg-white hover:text-cyber-red transition-colors">Upgrade</Link>
+                </div>
            </div>
-        </div>
-
-        <div className="mt-auto pt-6 border-t border-gray-900">
           <button
             onClick={handleLogout}
-            className="w-full flex items-center justify-center gap-2 bg-gray-900 hover:bg-red-950/30 text-gray-400 hover:text-red-500 p-3 rounded-xl border border-gray-800 hover:border-red-500/30 transition-all duration-300"
+            className="w-full flex items-center justify-center gap-4 text-xs font-black uppercase tracking-[0.3em] text-gray-600 hover:text-cyber-red hover:bg-cyber-red/5 p-4 rounded-xl transition-all duration-300"
           >
-            <span>🔌</span> Logout
+            <LogOut className="w-4 h-4" /> Sign-Off
           </button>
         </div>
       </div>
 
       {/* MAIN CONTENT */}
       <div className="flex-1 flex flex-col">
-        <header className="h-20 border-b border-gray-900 flex items-center justify-between px-8 bg-black/50 backdrop-blur-xl z-30 sticky top-0">
-          <div>
-            <h1 className="text-lg font-black tracking-tighter uppercase italic">Security Operations Center</h1>
-            <p className="text-[10px] text-gray-500 uppercase tracking-widest">Instance: ALPHA-NODE-01</p>
+        <header className="h-24 border-b border-white/5 flex items-center justify-between px-10 bg-cyber-black/60 backdrop-blur-2xl z-30 sticky top-0 overflow-hidden">
+          <div className="flex items-center gap-4">
+              <div className="w-1.5 h-8 bg-cyber-red rounded-full"></div>
+              <div>
+                <h1 className="text-xl font-black tracking-tighter uppercase italic text-glow-red">War Room Alpha-1</h1>
+                <p className="text-[10px] text-gray-600 uppercase tracking-widest font-bold">Node Identity: SV-SOC-773</p>
+              </div>
           </div>
-          <div className="flex items-center gap-6">
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-red-500/5 border border-red-500/10 rounded-full">
-                <span className="relative flex h-1.5 w-1.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500"></span>
-                </span>
-                <span className="text-[9px] font-black text-red-500 uppercase tracking-[0.2em]">Live Monitoring Active</span>
+          <div className="flex items-center gap-10">
+            <div className="hidden sm:flex items-center gap-3 px-6 py-2 bg-cyber-red/10 border border-cyber-red/20 rounded-full group cursor-help">
+                <Bell className="w-3 h-3 text-cyber-red group-hover:animate-bounce" />
+                <span className="text-[10px] font-black text-cyber-red uppercase tracking-[0.2em] italic">Real-Time Threat Feed Active</span>
             </div>
-            <div className="flex items-center gap-2 bg-gray-900 border border-gray-800 px-4 py-1.5 rounded-full">
-              <span className={`h-2 w-2 rounded-full ${status === 'active' || status === 'ok' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-yellow-500 animate-pulse'}`}></span>
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{status}</span>
+            <div className="flex items-center gap-3 bg-white/5 border border-white/10 px-6 py-2 rounded-full">
+              <span className={`h-2 w-2 rounded-full ${status === 'active' || status === 'ok' ? 'bg-green-500 shadow-[0_0_12px_rgba(34,197,94,0.8)]' : 'bg-yellow-500 animate-pulse'}`}></span>
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{status} Status</span>
             </div>
           </div>
         </header>
 
-        <main className="flex-1 p-8 overflow-y-auto custom-scrollbar">
+        <main className="flex-1 p-10 overflow-y-auto custom-scrollbar space-y-12">
           {/* STATS INFOCARDS */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
              {[
                { 
                  label: "System Status", 
                  val: status.toUpperCase(), 
-                 col: status === "active" || status === "ok" ? "text-green-500" : "text-red-500",
-                 icon: <Activity className="w-4 h-4 opacity-20" />
+                 col: status === "active" || status === "ok" ? "text-green-500" : "text-cyber-red",
+                 icon: <Activity className="w-4 h-4" />,
+                 glow: status === "active" || status === "ok" ? "group-hover:text-green-400" : "group-hover:text-cyber-red"
                },
                { 
-                 label: "Total Packets", 
+                 label: "Analyzed (Cumulative)", 
                  val: stats.total_packets_analyzed, 
-                 col: "text-blue-400",
-                 icon: <Server className="w-4 h-4 opacity-20" />
-               },
-               { 
-                 label: "Total Alerts", 
-                 val: stats.total_alerts, 
                  col: "text-white",
-                 icon: <AlertTriangle className="w-4 h-4 opacity-20" />
+                 icon: <Server className="w-4 h-4" />,
+                 glow: "group-hover:text-cyber-blue"
                },
                { 
-                 label: "Avg Risk Score", 
+                 label: "Intercepted Threats", 
+                 val: stats.total_alerts, 
+                 col: "text-cyber-red",
+                 icon: <Shield className="w-4 h-4" />,
+                 glow: "group-hover:text-cyber-red"
+               },
+               { 
+                 label: "Avg Explanatory Index", 
                  val: (stats.avg_risk_score * 100).toFixed(1), 
-                 col: "text-yellow-500", 
+                 col: "text-cyber-blue", 
                  unit: "%",
-                 icon: <Activity className="w-4 h-4 opacity-20" />
+                 icon: <Brain className="w-4 h-4" />,
+                 glow: "group-hover:text-cyber-blue"
                }
              ].map((card, i) => (
-                <div key={i} className="bg-gray-900/40 p-6 rounded-3xl border border-gray-800 shadow-xl overflow-hidden relative group hover:border-gray-700 transition-all duration-300">
-                    <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-3 font-black">{card.label}</p>
-                    <div className="flex items-baseline gap-1">
-                        <span className={`text-3xl font-black italic tracking-tighter ${card.col}`}>{card.val}</span>
+                <div key={i} className="glass-card group p-8 overflow-hidden relative transition-all duration-700 hover:scale-[1.02] cursor-default border-white/5 hover:border-white/10 shadow-2xl">
+                    <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+                    <p className="text-[10px] text-gray-600 uppercase tracking-[0.3em] mb-4 font-black">{card.label}</p>
+                    <div className="flex items-baseline gap-2 relative z-10">
+                        <span className={`text-4xl font-black italic tracking-tighter ${card.col} group-hover:scale-105 transition-transform duration-500`}>{card.val}</span>
                         {card.unit && <span className="text-[10px] text-gray-700 font-bold uppercase">{card.unit}</span>}
                     </div>
-                    <div className="absolute top-4 right-4 group-hover:scale-125 transition-transform duration-500">
+                    <div className={`absolute top-6 right-8 opacity-5 group-hover:opacity-30 group-hover:-translate-y-1 transition-all duration-700 ${card.glow}`}>
                         {card.icon}
                     </div>
                 </div>
              ))}
           </div>
 
-          {/* 🌍 GLOBAL THREAT MAP (FULL WIDTH) */}
-          <div className="mb-10">
-             <AttackMap alerts={rawAlerts} />
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* 🌍 GLOBAL THREAT MAP */}
+            <div className="lg:col-span-2 glass-card h-[500px] relative overflow-hidden group">
+                 <div className="absolute top-0 left-0 px-6 py-4 z-20 flex items-center gap-3">
+                    <div className="w-2 h-2 bg-cyber-red rounded-full animate-ping"></div>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-cyber-red italic text-glow-red">Live Global Radar</span>
+                 </div>
+                 <AttackMap alerts={rawAlerts} />
+            </div>
+
+            {/* ⚡ SYSTEM LOGS */}
+            <TerminalLogs />
           </div>
 
-          {/* ⚔️ OFFENSIVE + DEFENSIVE BATTLEGROUND */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
              <OffensivePanel />
              <QuarantineTable />
           </div>
 
-          {/* ALERT BREAKDOWN & CHARTS */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-2">
                 <StatsCharts distribution={stats.attack_distribution} />
             </div>
             
-            <div className="bg-gray-900/40 p-8 rounded-3xl border border-gray-800 shadow-xl">
-                <h2 className="text-lg font-black tracking-tighter uppercase italic flex items-center gap-2 mb-8">
-                    <span className="text-red-500">🚨</span> Alert Breakdown
+            <div className="glass-card p-10 flex flex-col justify-center gap-8 bg-black/40 border-white/5 relative group overflow-hidden">
+                <div className="absolute -top-10 -right-10 w-40 h-40 bg-cyber-red/5 blur-[80px] rounded-full group-hover:bg-cyber-red/10 transition-all"></div>
+                
+                <h2 className="text-xl font-black tracking-tighter uppercase italic flex items-center gap-4 text-glow-red">
+                    <AlertTriangle className="w-6 h-6 text-cyber-red animate-pulse" /> 
+                    Threat Distribution
                 </h2>
+                
                 <div className="space-y-6">
                     {[
-                        { label: "Critical", val: stats.critical_alerts, color: "bg-red-600", text: "text-red-500" },
-                        { label: "High", val: stats.high_alerts, color: "bg-orange-600", text: "text-orange-500" },
-                        { label: "Medium", val: stats.medium_alerts, color: "bg-yellow-600", text: "text-yellow-500" },
-                        { label: "Low", val: stats.low_alerts, color: "bg-blue-600", text: "text-blue-500" },
+                        { label: "Critical Risk", val: stats.critical_alerts, color: "bg-red-600", text: "text-cyber-red", sub: "Immediate Neutralization" },
+                        { label: "High Risk", val: stats.high_alerts, color: "bg-orange-500", text: "text-orange-500", sub: "Active Observation" },
+                        { label: "Normal Flow", val: stats.low_alerts + stats.medium_alerts, color: "bg-cyber-blue", text: "text-cyber-blue", sub: "Routine Filtration" },
                     ].map((item, i) => (
-                        <div key={i} className="group cursor-default">
-                            <div className="flex justify-between items-end mb-2">
-                                <span className={`text-[10px] font-black uppercase tracking-widest ${item.text}`}>{item.label}</span>
-                                <span className="text-xl font-black italic tracking-tighter">{item.val}</span>
+                        <div key={i} className="group/row cursor-default">
+                            <div className="flex justify-between items-end mb-3">
+                                <div>
+                                    <span className={`text-[10px] font-black uppercase tracking-widest ${item.text}`}>{item.label}</span>
+                                    <p className="text-[8px] text-gray-500 font-bold uppercase tracking-widest group-hover/row:text-gray-300 transition-colors">{item.sub}</p>
+                                </div>
+                                <span className="text-2xl font-black italic tracking-tighter">{item.val}</span>
                             </div>
-                            <div className="h-1.5 w-full bg-gray-800 rounded-full overflow-hidden">
+                            <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden border border-white/5 p-[1px]">
                                 <div 
-                                    className={`h-full ${item.color} transition-all duration-1000 ease-out`} 
+                                    className={`h-full ${item.color} transition-all duration-1500 ease-in-out relative`} 
                                     style={{ width: `${stats.total_alerts > 0 ? (item.val / stats.total_alerts * 100) : 0}%` }}
-                                ></div>
+                                >
+                                    <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+                                </div>
                             </div>
                         </div>
                     ))}
                 </div>
-                <div className="mt-10 p-4 bg-black/40 rounded-2xl border border-gray-800/50">
-                    <p className="text-[10px] text-gray-600 uppercase font-bold tracking-[0.2em] leading-relaxed">
-                        Statistical model calibrated for <span className="text-white">Active Detection</span>.
-                        Confidence rating: <span className="text-green-500">98.4%</span>
-                    </p>
-                </div>
             </div>
           </div>
 
-          <div className="bg-gray-900/40 rounded-3xl border border-gray-800 shadow-2xl overflow-hidden transition-all duration-700 mt-10">
-            <div className="p-6 border-b border-gray-800 flex items-center justify-between">
-              <h2 className="text-lg font-black tracking-tighter uppercase italic flex items-center gap-2">
-                <span className="text-red-500 animate-pulse">📡</span> Live Attack Feed
+          {/* 📡 LIVE ATTACK FEED (UPGRADED) */}
+          <div className="glass-card bg-black/60 border-white/5 overflow-hidden transition-all duration-700 shadow-3xl group">
+            <div className="p-8 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
+              <h2 className="text-xl font-black tracking-tighter uppercase italic flex items-center gap-4">
+                <Radio className="w-6 h-6 text-cyber-red animate-pulse" />
+                Interception History
               </h2>
-              <div className="flex items-center gap-2">
-                <span className="relative flex h-2 w-2">
-                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                   <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                </span>
-                <span className="text-[10px] text-red-600 font-black tracking-widest uppercase">Streaming Real-Time Alerts</span>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3 px-4 py-1.5 bg-black/40 border border-white/5 rounded-lg">
+                    <span className="text-[10px] text-gray-600 font-black tracking-widest uppercase">Node: <span className="text-white">India-Center</span></span>
+                </div>
+                <div className="flex items-center gap-3 px-4 py-1.5 bg-green-500/10 border border-green-500/20 rounded-lg">
+                    <span className="text-[10px] text-green-500 font-black tracking-widest uppercase italic">Streaming Packets</span>
+                </div>
               </div>
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-gray-800/50 bg-black/20">
-                    <th className="p-4 text-[10px] font-black uppercase tracking-widest text-gray-500">Timestamp</th>
-                    <th className="p-4 text-[10px] font-black uppercase tracking-widest text-gray-500">Source Node</th>
-                    <th className="p-4 text-[10px] font-black uppercase tracking-widest text-gray-500">Threat Vector</th>
-                    <th className="p-4 text-[10px] font-black uppercase tracking-widest text-gray-500">Risk Index</th>
-                    <th className="p-4 text-[10px] font-black uppercase tracking-widest text-gray-500 text-right">Actions</th>
+                  <tr className="border-b border-white/5 bg-white/5">
+                    <th className="p-6 text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Trace/Timestamp</th>
+                    <th className="p-6 text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Attacker Source</th>
+                    <th className="p-6 text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Threat Vector</th>
+                    <th className="p-6 text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Risk Intensity</th>
+                    <th className="p-6 text-[10px] font-black uppercase tracking-[0.2em] text-gray-500 text-right">SOC Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-800/30">
+                <tbody className="divide-y divide-white/5">
                   {rawAlerts.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="py-20 text-center">
-                        <Activity className="w-10 h-10 text-gray-800 mx-auto mb-4 animate-pulse" />
-                        <p className="text-[10px] text-gray-600 font-black uppercase tracking-[0.3em] italic">Scanning network packets... All clear.</p>
+                      <td colSpan={5} className="py-24 text-center">
+                        <Activity className="w-16 h-16 text-white/5 mx-auto mb-8 animate-pulse" />
+                        <p className="text-[10px] text-gray-700 font-black uppercase tracking-[0.4em] italic leading-loose">
+                            Analyzing Incoming Buffer... <br /> Network Posture Status: <span className="text-green-500">Fortified</span>
+                        </p>
                       </td>
                     </tr>
                   ) : (
@@ -339,35 +451,41 @@ export default function Dashboard() {
                       <tr 
                         key={i} 
                         onClick={() => handleAlertClick(alert.id)}
-                        className="group hover:bg-red-500/5 cursor-pointer transition-colors"
+                        className="group/row hover:bg-cyber-red/[0.03] cursor-pointer transition-all duration-300"
                       >
-                        <td className="p-4">
-                          <span className="text-[10px] font-mono text-gray-500 group-hover:text-gray-300 transition-colors">
-                            {new Date(alert.timestamp).toLocaleTimeString()}
-                          </span>
-                        </td>
-                        <td className="p-4">
-                          <div className="flex items-center gap-2">
-                             <div className={`w-1.5 h-1.5 rounded-full ${alert.risk.severity === 'critical' ? 'bg-red-500 shadow-[0_0_8px_red]' : 'bg-orange-500'}`}></div>
-                             <span className="text-sm font-black italic tracking-tighter group-hover:text-red-400 transition-colors">{alert.packet.src_ip}</span>
+                        <td className="p-6">
+                          <div className="space-y-1">
+                              <span className="text-[10px] font-mono text-gray-500 group-hover/row:text-white transition-colors">
+                                {new Date(alert.timestamp).toLocaleTimeString()}
+                              </span>
+                              <p className="text-[8px] text-gray-700 font-black uppercase tracking-[0.2em]">Alpha-Node Link</p>
                           </div>
                         </td>
-                        <td className="p-4">
-                          <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded bg-black/40 border ${alert.risk.severity === 'critical' ? 'text-red-500 border-red-900/50' : 'text-orange-400 border-orange-900/50'}`}>
+                        <td className="p-6">
+                          <div className="flex items-center gap-4">
+                             <div className={`w-2 h-2 rounded-full ${alert.risk.severity === 'critical' ? 'bg-cyber-red shadow-[0_0_12px_rgba(239,68,68,1)]' : 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.5)]'}`}></div>
+                             <div className="space-y-1">
+                                <span className="text-lg font-black italic tracking-tighter group-hover/row:text-cyber-red transition-colors">{alert.packet.src_ip}</span>
+                                <p className="text-[8px] text-gray-600 font-bold uppercase tracking-widest">{alert.geo_location?.country || "Earth-Orbit"}</p>
+                             </div>
+                          </div>
+                        </td>
+                        <td className="p-6">
+                          <span className={`text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-lg bg-black border ${alert.risk.severity === 'critical' ? 'text-cyber-red border-cyber-red/20 text-glow-red' : 'text-orange-400 border-orange-900/30'}`}>
                             {alert.classification.attack_type}
                           </span>
                         </td>
-                        <td className="p-4">
-                          <div className="flex items-center gap-2">
-                            <div className="w-12 h-1 bg-gray-800 rounded-full overflow-hidden">
-                              <div className="h-full bg-red-500" style={{ width: `${alert.risk.score * 100}%` }}></div>
+                        <td className="p-6">
+                          <div className="flex items-center gap-4">
+                            <div className="w-16 h-1 bg-white/5 rounded-full overflow-hidden border border-white/5">
+                              <div className={`${alert.risk.severity === 'critical' ? 'bg-cyber-red' : 'bg-orange-500'} h-full transition-all duration-1000`} style={{ width: `${alert.risk.score * 100}%` }}></div>
                             </div>
-                            <span className="text-[10px] font-black text-gray-400 italic">{(alert.risk.score * 100).toFixed(0)}%</span>
+                            <span className={`text-[10px] font-black italic ${alert.risk.severity === 'critical' ? 'text-cyber-red' : 'text-gray-500'}`}>{(alert.risk.score * 100).toFixed(0)}</span>
                           </div>
                         </td>
-                        <td className="p-4 text-right">
-                           <button className="text-[10px] font-black uppercase tracking-widest bg-gray-900 group-hover:bg-red-600/20 text-gray-600 group-hover:text-red-500 px-3 py-1 rounded-lg border border-gray-800 group-hover:border-red-500/30 transition-all flex items-center gap-1 ml-auto">
-                             Deep Dive <ChevronRight className="w-3 h-3" />
+                        <td className="p-6 text-right">
+                           <button className="text-[10px] font-black uppercase tracking-widest bg-white/5 group-hover/row:bg-cyber-red group-hover/row:text-white px-6 py-2 rounded-xl border border-white/5 transition-all flex items-center gap-2 ml-auto shadow-lg">
+                             Deep Analysis <ChevronRight className="w-3 h-3 group-hover/row:translate-x-1 transition-transform" />
                            </button>
                         </td>
                       </tr>
@@ -381,17 +499,33 @@ export default function Dashboard() {
       </div>
 
       <style jsx global>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #1f2937; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #050505; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #1a1a1a; border-radius: 20px; border: 2px solid #050505; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #ef4444; }
+        
         .custom-scrollbar-thin::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar-thin::-webkit-scrollbar-thumb { background: #374151; border-radius: 10px; }
+        .custom-scrollbar-thin::-webkit-scrollbar-thumb { background: #1a1a1a; border-radius: 10px; }
+        
+        @keyframes scanline {
+            0% { transform: translateY(-100%); opacity: 0; }
+            50% { opacity: 0.5; }
+            100% { transform: translateY(100vh); opacity: 0; }
+        }
+
+        .animate-scanline {
+            animation: scanline 4s linear infinite;
+        }
+
+        @keyframes spin-reverse {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(-360deg); }
+        }
+        .animate-spin-reverse {
+            animation: spin-reverse 2s linear infinite;
+        }
       `}</style>
     </div>
   );
 }
-
-const ChevronRight = ({ className }: { className?: string }) => (
-    <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-);

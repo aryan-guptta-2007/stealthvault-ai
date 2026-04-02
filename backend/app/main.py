@@ -45,6 +45,7 @@ from app.core.batch_sqla import inspection_batcher, system_event_batcher
 # Import agents
 from app.agents.defender import defender_agent
 from app.core.abuse_guard import abuse_guard
+from app.services.threat_intel import update_threat_intel
 
 # Import routers
 from app.api.traffic import router as traffic_router
@@ -94,6 +95,22 @@ async def auto_attack_daemon():
         
         # 🕰️ Run every 10 seconds to keep the dashboard alive but not overwhelmed
         await asyncio.sleep(5)
+
+async def refresh_threat_feed():
+    """
+    🕰️ THREAT INTEL REFRESH DAEMON
+    Periodically updates the malicious IP cache from external feeds.
+    Runs every 1 hour.
+    """
+    logger.info("🕰️ Threat Intelligence Refresh Daemon: Online (Policy: 1 hour)")
+    while True:
+        try:
+            update_threat_intel()
+        except Exception as e:
+            logger.error(f"❌ Threat Intel Refresh Fault: {e}")
+        
+        # Run every 1 hour
+        await asyncio.sleep(3600)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -154,6 +171,14 @@ async def lifespan(app: FastAPI):
     # 🧹 Start Data Lifecycle Daemon (Purge old telemetry)
     asyncio.create_task(data_retention_daemon())
     print("  🕰️ Defender Safety Daemon Started")
+
+    # Initialize Threat Intelligence
+    try:
+        update_threat_intel()
+        asyncio.create_task(refresh_threat_feed())
+        logger.info("Threat Intelligence Feed — CONNECTED")
+    except Exception as e:
+        logger.error(f"Threat Intelligence Initialization Failed: {e}")
 
     # Start Autonomous Offensive Simulation (Live Dashboard Mode)
     asyncio.create_task(auto_attack_daemon())
