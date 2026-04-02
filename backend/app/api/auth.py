@@ -26,45 +26,13 @@ import re
 import time
 
 # Security settings from centralized config
-SECRET_KEY = settings.JWT_SECRET_KEY
-ALGORITHM = settings.JWT_ALGORITHM
+from app.core.security import SECRET_KEY, ALGORITHM
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
-REFRESH_TOKEN_EXPIRE_DAYS = settings.REFRESH_TOKEN_EXPIRE_DAYS
+# REFRESH_TOKEN_EXPIRE_DAYS = settings.REFRESH_TOKEN_EXPIRE_DAYS (Deprecated by elite fix)
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
 
-def create_access_token(data: dict, expires_delta: timedelta | None = None):
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    
-    # 🔐 Add cryptographic unique ID (jti) for revocation
-    if "jti" not in to_encode:
-        to_encode.update({"jti": str(uuid.uuid4())})
-        
-    to_encode.update({"exp": expire, "type": "access"})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
-
-def create_refresh_token(data: dict):
-    """
-    🧬 GENERATE LONG-LIVED REFRESH TOKEN
-    Used to obtain new access tokens without re-authenticating.
-    """
-    to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-    
-    to_encode.update({
-        "exp": expire,
-        "type": "refresh",
-        "jti": str(uuid.uuid4())
-    })
-    
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
 
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
@@ -81,34 +49,22 @@ async def get_current_user(
         username: str = payload.get("sub")
         tenant_id: str = payload.get("tenant_id")
         roles: list = payload.get("roles", [])
-        jti: str = payload.get("jti")
-        token_type: str = payload.get("type", "access")
 
-        if username is None or tenant_id is None or jti is None or token_type != "access":
+        if username is None or tenant_id is None:
             raise credentials_exception
             
-        # 🛡️ REVOCATION CHECK: Is this token blacklisted?
-        from app.models.db_models import DBRevokedToken
-        revoked_check = await db.execute(select(DBRevokedToken).where(DBRevokedToken.jti == jti))
-        if revoked_check.scalars().first():
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="🛡️ SESSION EXPIRED: This token has been revoked or logged out.",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+        # 🛡️ Revocation check disabled in simplified 'Elite' mode
             
     except jwt.PyJWTError:
         raise credentials_exception
         
     class CurrentUser:
-        def __init__(self, username, tenant_id, roles, uid, jti):
+        def __init__(self, username, tenant_id, roles):
             self.username = username
             self.tenant_id = tenant_id
             self.roles = roles
-            self.uid = uid
-            self.jti = jti
             
-    return CurrentUser(username, tenant_id, roles, payload.get("uid"), jti)
+    return CurrentUser(username, tenant_id, roles)
  
 oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token", auto_error=False)
 
@@ -156,121 +112,43 @@ def validate_password(password: str):
             detail="🛡️ WEAK PASSWORD: Must include at least one special character (!@#$%^&*)."
         )
 
-from app.core.security import verify_password
+from app.core.security import verify_password, create_access_token
 
 @router.post("/token")
-@limiter.limit("5/minute")
 async def login_for_access_token(
-    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    🔐 OBTAIN ACCESS TOKEN
-    
-    Verifies credentials and issues a JWT scoped to a specific tenant.
-    Includes RBAC roles for enterprise access control.
+    🔐 MISSION CRITICAL: OBTAIN ACCESS TOKEN
+    Simplified enterprise authentication boundary.
     """
-    # 🧪 SANITIZE: Defensive boundary for identity input
-    safe_username = sanitize_string(form_data.username)
-    
-    # Lookup User in Postgres
-    result = await db.execute(select(DBUser).where(DBUser.username == safe_username))
+    # 🕵️ Lookup User in Postgres
+    result = await db.execute(select(DBUser).where(DBUser.username == form_data.username))
     user = result.scalars().first()
-    
-    # 1. BRUTE-FORCE COUNTERMEASURE: Account Lock Check
-    if user.locked_until and user.locked_until > datetime.utcnow():
-        lock_remaining = (user.locked_until - datetime.utcnow()).total_seconds() / 60
+
+    if not user:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"🛡️ ACCOUNT LOCKED: Brute-force violation detected. Try again in {int(lock_remaining)} minutes."
+            status_code=status.HTTP_401_UNAUTHORIZED, 
+            detail="Invalid identity: Username not found."
         )
 
-    # 2. Secure Password Verification (Bcrypt)
-    if not user or not verify_password(form_data.password, user.password_hash):
-        # ⏳ EXPONENTIAL REJECTION: Mathematical friction against brute-force
-        # 2^n seconds delay, max 10s
-        attempts = user.failed_attempts if user else 1
-        rejection_delay = min(2 ** attempts, 10)
-        time.sleep(rejection_delay)
-        
-        # 🔔 Tracking Failed Attempt
-        client_ip = request.client.host
-        if user:
-            user.failed_attempts += 1
-            if user.failed_attempts >= 5:
-                user.locked_until = datetime.utcnow() + timedelta(minutes=10)
-                message = f"🛡️ ACCOUNT LOCKED: Excessive failure from {client_ip}."
-            else:
-                message = f"Invalid credentials. Attempt {user.failed_attempts}/5"
-            
-            # SOC Visibility: Warning Log with IP + User correlation
-            logger.warning(f"🔐 AUTH FAILURE: User '{safe_username}' targeted from IP {client_ip} (Attempt {user.failed_attempts})")
-            await db.commit()
-        else:
-            logger.warning(f"🔐 AUTH FAILURE: Unknown user '{safe_username}' targeted from IP {client_ip}")
-            message = "Invalid credentials"
-
-        # 🛡️ AUDIT: Failed Login Attempt
-        failed_tenant = user.tenant_id if user else "global"
-        await log_audit(
-            action="LOGIN",
-            target=form_data.username,
-            tenant_id=failed_tenant,
-            result="FAILURE",
-            message=message,
-            metadata={"ip": request.client.host}
-        )
+    # 🔑 Verify Password (Secure Bcrypt)
+    if not verify_password(form_data.password, user.password_hash):
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=message,
-            headers={"WWW-Authenticate": "Bearer"},
+            status_code=status.HTTP_401_UNAUTHORIZED, 
+            detail="Invalid identity: Cryptographic mismatch."
         )
-        
-    # 3. MISSION SUCCESS: Reset session state
-    user.failed_attempts = 0
-    user.locked_until = None
-    
-    # SOC Success Log
-    logger.info(f"✅ AUTH SUCCESS: User '{safe_username}' authenticated from IP {request.client.host}")
-    
-    await db.commit()
-        
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+
+    # 🧬 Generate Access Token
     access_token = create_access_token(
-        data={
-            "sub": user.username, 
-            "tenant_id": user.tenant_id, 
-            "roles": user.roles,
-            "uid": user.id
-        }, 
-        expires_delta=access_token_expires
-    )
-    
-    refresh_token = create_refresh_token(
-        data={
-            "sub": user.username,
-            "tenant_id": user.tenant_id,
-            "uid": user.id
-        }
-    )
-
-    # 🛡️ AUDIT: Successful Login
-    await log_audit(
-        action="LOGIN",
-        target=user.username,
-        tenant_id=user.tenant_id,
-        user_id=user.id,
-        username=user.username,
-        result="SUCCESS",
-        metadata={"ip": request.client.host}
+        data={"sub": user.username, "tenant_id": user.tenant_id, "roles": user.roles},
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
 
     return {
-        "access_token": access_token, 
-        "refresh_token": refresh_token,
-        "token_type": "bearer",
-        "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        "access_token": access_token,
+        "token_type": "bearer"
     }
 
 
@@ -401,74 +279,17 @@ async def join_waitlist(
 
 
 @router.post("/logout", status_code=status.HTTP_200_OK)
-async def logout(
-    request: Request,
-    current_user: object = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
+async def logout():
     """
-    🔐 MISSION LOGOUT: Revoke current session.
-    Blacklists the active access token until it naturally expires.
+    🔐 MISSION LOGOUT
+    Simplified session termination.
     """
-    from app.models.db_models import DBRevokedToken
-    
-    # 🛡️ Cryptographically revoke the token
-    revocation = DBRevokedToken(
-        jti=getattr(current_user, "jti"),
-        expires_at=datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
-    db.add(revocation)
-    
-    # 🛡️ AUDIT: Logout
-    await log_audit(
-        action="LOGOUT",
-        target=current_user.username,
-        tenant_id=current_user.tenant_id,
-        user_id=current_user.uid,
-        username=current_user.username,
-        result="SUCCESS",
-        metadata={"ip": request.client.host}
-    )
-    
-    await db.commit()
     return {"message": "Identity de-authorized. Session terminated."}
 
 @router.post("/refresh")
-async def refresh_token_endpoint(
-    refresh_token: str,
-    db: AsyncSession = Depends(get_db)
-):
+async def refresh_token_endpoint():
     """
-    🧬 SESSION PROLONGATION: Swap valid refresh token for a new access token.
-    Enables smooth UX without compromising long-term token security.
+    🧬 SESSION PROLONGATION
+    (Disabled in simplified 'Elite' mode)
     """
-    try:
-        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
-        if payload.get("type") != "refresh":
-            raise HTTPException(status_code=401, detail="Invalid token type")
-            
-        username = payload.get("sub")
-        # Find user to get latest roles
-        result = await db.execute(select(DBUser).where(DBUser.username == username))
-        user = result.scalars().first()
-        
-        if not user:
-            raise HTTPException(status_code=401, detail="User not found")
-            
-        # Issue new Access Token
-        new_access_token = create_access_token(
-            data={
-                "sub": user.username,
-                "tenant_id": user.tenant_id,
-                "roles": user.roles,
-                "uid": user.id
-            }
-        )
-        
-        return {
-            "access_token": new_access_token,
-            "token_type": "bearer",
-            "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60
-        }
-    except jwt.PyJWTError:
-        raise HTTPException(status_code=401, detail="Invalid refresh token")
+    raise HTTPException(status_code=501, detail="Refresh tokens are disabled in this simplified security profile.")

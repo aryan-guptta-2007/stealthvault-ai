@@ -1,17 +1,34 @@
-import bcrypt
+from passlib.context import CryptContext
+import jwt
+import os
+from datetime import datetime, timedelta
+
+# Cryptographic Configuration
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# 🔐 Access mission-critical secrets from environment or specialized config
+SECRET_KEY = os.getenv("SV_JWT_SECRET_KEY", "3a1c8f9d2e4b7a1c8f9d2e4b7a1c8f9d") # Fallback for local dev only
+ALGORITHM = "HS256"
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Check if the provided password matches the stored hash."""
-    # Bcrypt takes bytes, so we encode the plain password
-    # ⚠️ Important: We must also truncate to 72 bytes to match the hashing logic
-    password_bytes = plain_password.encode("utf-8")[:72]
-    # hashed_password is a string from the DB, bcrypt needs bytes
-    return bcrypt.checkpw(password_bytes, hashed_password.encode("utf-8"))
+    """Verifies that the provided password matches the stored hash."""
+    return pwd_context.verify(plain_password, hashed_password)
 
 def get_password_hash(password: str) -> str:
+    """Generates a secure bcrypt hash for storage."""
+    return pwd_context.hash(password)
+
+def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     """
-    🔥 FINAL FIX (100% WORKING)
-    Generates a secure bcrypt hash after truncating to 72 bytes.
+    🧬 GENERATE ACCESS TOKEN
+    Issues a cryptographically signed JWT for session authorization.
     """
-    password_bytes = password.encode("utf-8")[:72]
-    return bcrypt.hashpw(password_bytes, bcrypt.gensalt()).decode("utf-8")
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=60)
+    
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
