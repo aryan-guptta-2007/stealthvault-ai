@@ -1,74 +1,46 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
-from datetime import datetime, timedelta
+from sqlalchemy import select, func
 from app.database import get_db
 from app.models.db_models import DBAlert
-from app.api.auth import get_optional_user
-from app.core.limiter import limiter
 
 router = APIRouter(prefix="/stats", tags=["Telemetry & Analytics"])
 
 @router.get("/")
-@limiter.limit("60/minute")
-async def get_soc_stats(
-    request: Request,
-    current_user: object | None = Depends(get_optional_user),
-    db: AsyncSession = Depends(get_db)
-):
+async def get_stats(db: AsyncSession = Depends(get_db)):
     """
-    📊 MISSION CRITICAL STATS
-    Provides a real-time tactical overview of the SOC's performance.
+    📊 MISSION CRITICAL STATS - SIMPLIFIED
+    Provides a real-time tactical overview of alert counts by severity.
     """
-    tenant_id = getattr(current_user, "tenant_id", "default") if current_user else "default"
-    
-    # 🕵️ Aggregations
-    # 1. Severity Distribution
-    stmt_severity = select(DBAlert.severity, func.count(DBAlert.id)).where(
-        DBAlert.tenant_id == tenant_id
-    ).group_by(DBAlert.severity)
-    
-    # 2. Top Attackers (Source IPs)
-    stmt_attackers = select(DBAlert.src_ip, func.count(DBAlert.id)).where(
-        DBAlert.tenant_id == tenant_id
-    ).group_by(DBAlert.src_ip).order_by(desc(func.count(DBAlert.id))).limit(5)
-    
-    # 3. 24h Trend
-    cutoff = datetime.utcnow() - timedelta(hours=24)
-    stmt_trend = select(func.date_trunc('hour', DBAlert.timestamp), func.count(DBAlert.id)).where(
-        DBAlert.tenant_id == tenant_id,
-        DBAlert.timestamp >= cutoff
-    ).group_by(func.date_trunc('hour', DBAlert.timestamp)).order_by(func.date_trunc('hour', DBAlert.timestamp))
-
     try:
-        # Execute
-        res_severity = await db.execute(stmt_severity)
-        res_attackers = await db.execute(stmt_attackers)
-        res_trend = await db.execute(stmt_trend)
+        # 1. Total Alerts
+        stmt_total = select(func.count(DBAlert.id))
+        res_total = await db.execute(stmt_total)
+        total_alerts = res_total.scalar() or 0
 
-        # Format
-        severity_map = {"critical": 0, "high": 0, "medium": 0, "low": 0}
-        total_alerts = 0
-        for sev, count in res_severity.all():
-            severity_map[sev] = count
-            total_alerts += count
+        # 2. Severity Counts
+        async def get_sev_count(sev: str):
+            stmt = select(func.count(DBAlert.id)).where(DBAlert.severity == sev)
+            res = await db.execute(stmt)
+            return res.scalar() or 0
 
-        top_attackers = [{"ip": ip, "count": count} for ip, count in res_attackers.all()]
-        
-        trend_data = [{"time": t.isoformat(), "count": c} for t, c in res_trend.all()]
+        critical = await get_sev_count("critical")
+        high = await get_sev_count("high")
+        medium = await get_sev_count("medium")
+        low = await get_sev_count("low")
 
         return {
-            "summary": {
-                "total_alerts": total_alerts,
-                "status": "ACTIVE",
-                "last_updated": datetime.utcnow().isoformat()
-            },
-            "severity_distribution": severity_map,
-            "top_attackers": top_attackers,
-            "hourly_trend_24h": trend_data
+            "total_alerts": total_alerts,
+            "critical": critical,
+            "high": high,
+            "medium": medium,
+            "low": low
         }
     except Exception as e:
         from fastapi import HTTPException
         import logging
         logging.error(f"Tactical Telemetry Fault: {e}")
-        raise HTTPException(status_code=500, detail="Tactical analytics engine currently unavailable.")
+        raise HTTPException(
+            status_code=500, 
+            detail="Tactical analytics engine currently unavailable."
+        )
