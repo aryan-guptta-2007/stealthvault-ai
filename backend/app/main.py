@@ -120,17 +120,26 @@ async def refresh_threat_feed():
 
 async def fix_missing_columns():
     """
-    🛠️ AUTO DB FIX: Ensures critical columns exist.
+    🛠️ AUTO DB FIX: Ensures critical columns and system tenants exist.
     Runs at startup to handle schema evolutions without migrations.
     """
     from app.database import engine
     try:
         async with engine.begin() as conn:
+            # 1. Ensure columns exist
             await conn.execute(text("""
                 ALTER TABLE alerts 
                 ADD COLUMN IF NOT EXISTS threat_source VARCHAR(50) DEFAULT 'ANALYSIS';
             """))
-        print("  ✅ DB SCHEMA FIX: threat_source column verified")
+
+            # 2. 🔥 Seed System Global Tenant
+            await conn.execute(text("""
+                INSERT INTO tenants (id, name, created_at)
+                VALUES ('system-global', 'System Global Tenant', NOW())
+                ON CONFLICT (id) DO NOTHING;
+            """))
+
+        print("  ✅ DB SCHEMA FIX: threat_source column + system-global tenant verified")
     except Exception as e:
         print(f"  ❌ DB SCHEMA ERROR: {e}")
 
