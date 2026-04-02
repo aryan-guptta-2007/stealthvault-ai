@@ -16,6 +16,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import asynccontextmanager
 import os
 import asyncio
+import time
 from datetime import datetime, timedelta
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -38,7 +39,8 @@ from app.ai_engine.classifier import attack_classifier
 from app.ai_engine.learner import continuous_learner
 from app.collector.stream import stream_processor
 from app.websocket.feed import ws_manager
-from app.database import init_db, log_event
+from app.database import init_db, log_event, get_db
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import db_models 
 from app.core.batch_sqla import inspection_batcher, system_event_batcher
 
@@ -63,6 +65,10 @@ from app.api.stats import router as stats_router
 
 from app.api.system import get_system_metrics
 import asyncio
+from sqlalchemy import select
+
+# Track app start time for Elite Health Monitoring
+START_TIME = time.time()
 
 async def auto_attack_daemon():
     """
@@ -712,18 +718,33 @@ async def root():
     }
 
 
-# Health check
+from fastapi import Depends
 @app.get("/health")
-async def health_check():
+async def health_check(db: AsyncSession = Depends(get_db)):
     """🚀 PRO-GRADE DIAGNOSTIC SUITE"""
+    uptime = int(time.time() - START_TIME)
+
+    # 📡 Check DB connection
+    try:
+        await db.execute(select(1))
+        db_status = "connected"
+    except Exception as e:
+        logger.error(f"Health Check DB Fault: {e}")
+        db_status = "disconnected"
+
     return {
         "status": "healthy",
         "service": "StealthVault AI",
-        "db": "connected",
-        "mode": "autonomous",
-        "ai_brain": "active" if (anomaly_detector.is_trained and attack_classifier.is_trained) else "learning",
-        "ws_connections": len(ws_manager.active_connections),
         "version": settings.APP_VERSION,
+        "environment": os.getenv("APP_ENV", "production"),
+        "ready": True,
+        "db": {
+            "status": db_status
+        },
+        "ai_brain": "active" if (anomaly_detector.is_trained and attack_classifier.is_trained) else "learning",
+        "mode": "autonomous",
+        "ws_connections": len(ws_manager.active_connections),
+        "uptime_seconds": uptime,
         "timestamp": datetime.utcnow().isoformat()
     }
 
